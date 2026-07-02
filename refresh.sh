@@ -18,6 +18,8 @@ echo "==> DOSE — not-yet-started oral trials (trial support)"
 python3 discovery/dose_monitor.py || echo "   (dose failed)"
 echo "==> State/local (NYC, Michigan)"
 python3 discovery/state_monitor.py || echo "   (state failed)"
+echo "==> Lead List (manufacturer BD contacts — local/gitignored)"
+python3 discovery/leads_import.py || echo "   (leads import failed)"
 echo "==> Asset inventory"
 python3 response/scan_assets.py
 echo "==> Per-drug pitches (outreach + branded PDF)"
@@ -26,7 +28,9 @@ echo "==> Dashboard"
 python3 response/build_dashboard.py
 echo "==> System overview PDF"
 python3 response/build_overview.py || echo "   (overview failed)"
+echo "==> Encrypt board -> index.html (password-gated public page)"
+python3 response/encrypt_board.py || echo "   (encrypt failed)"
 
 echo
-echo "Done. Open this file in your browser:"
-echo "  $(pwd)/dashboard.html"
+echo "Done. Local board:  $(pwd)/dashboard.html"
+echo "Shareable (encrypted) page: $(pwd)/index.html  — commit & push to publish."

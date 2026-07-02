@@ -21,8 +21,10 @@ import datetime as dt
 import html
 import json
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "discovery"))
@@ -74,6 +76,14 @@ def e(s):
 
 def slug(s):
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:40] or "opp"
+
+
+def pick_drug(drugs):
+    """Choose the cleanest real drug name from a lead's product list."""
+    for d in drugs:
+        if " " not in d and "-" not in d and d.isalpha() and len(d) > 3:
+            return d
+    return drugs[0] if drugs else ""
 
 
 def clean(text, limit=300):
@@ -227,6 +237,32 @@ real-world reporting delivered under this contract.
 I've attached a brief overview of the patient experience we'd stand up. We welcome the full discussion.
 
 Respectfully,
+[Your name] · Perigon Specialty Pharmacy
+"""
+
+
+def outreach_manuf(drug, mfr, label, rw, ta):
+    gen = f" ({label['generic']})" if label.get("generic") and label["generic"].lower() != drug.lower() else ""
+    return f"""Subject: Perigon Specialty Pharmacy + Medesto — a patient program for {drug}
+
+Hi {mfr} team,
+
+I lead partnerships at Perigon Specialty Pharmacy. As you manage the {drug}{gen} patient experience,
+I wanted to introduce Perigon + Medesto — 50-state, URAC + ACHC-accredited specialty dispensing
+(45,000 fills/month) paired with Medesto, our AI-powered, automation-first patient engagement
+platform, branded to {drug}:
+
+  • Pulse (patient app) — event-driven engagement instead of cold calls; HIPAA e-signatures and
+    document capture; {drug}-specific education in text, video and PDF; {rw['noun']} check-ins;
+    refill + delivery tracking; and in-app messaging/video with the pharmacist.
+  • Bridge (clinical-ops command center) — a unified pharmacy + EMR record, automated outreach,
+    outcomes scoring that auto-surfaces at-risk {drug} patients, accreditation-ready care plans,
+    and FHIR R4 messaging into the prescriber's EHR.
+
+We report real-world adherence and outcomes back to your team. I've attached a short, {drug}-branded
+mockup of the patient experience — worth 20 minutes to explore the fit?
+
+Best,
 [Your name] · Perigon Specialty Pharmacy
 """
 
@@ -468,15 +504,25 @@ h2{{font-size:21px;margin:0 0 4px;color:#0e7490}}.sub{{color:#667085;margin:0 0 
 
 
 def render_pdf(html_path, pdf_path):
-    subprocess.run([CHROME, "--headless", "--disable-gpu", "--no-pdf-header-footer",
-                    f"--print-to-pdf={pdf_path}", f"file://{html_path}"],
-                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+    # isolated profile so it works even if a Chrome/Brave GUI window is open
+    prof = tempfile.mkdtemp(prefix="rfp-chrome-")
+    try:
+        subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-sandbox",
+                        "--no-first-run", "--no-default-browser-check",
+                        f"--user-data-dir={prof}", "--no-pdf-header-footer",
+                        f"--print-to-pdf={pdf_path}", f"file://{html_path}"],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
+    finally:
+        shutil.rmtree(prof, ignore_errors=True)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default=None, help="only opportunities whose title contains this")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--no-pdf", action="store_true",
+                    help="write outreach + html + index only; skip Chrome PDF render "
+                         "(keeps any PDF already on disk). Use when a browser is open.")
     args = ap.parse_args()
 
     def recs(n):
@@ -492,6 +538,12 @@ def main():
         for r in recs(src):
             targets.append({"cid": r.get("id", ""), "kind": "rfp", "title": r.get("title", ""),
                             "recipient": r.get("org", "the agency"), "app": "", "route": "", "ta": ""})
+    for r in recs("manufacturers"):  # Lead List — only companies with a concrete named product
+        d = pick_drug(r.get("drugs", []))
+        if not d:
+            continue
+        targets.append({"cid": r.get("id", ""), "kind": "manuf", "title": d,
+                        "recipient": r.get("org", "the manufacturer"), "app": "", "route": "", "ta": ""})
     if args.only:
         targets = [t for t in targets if args.only.lower() in t["title"].lower()]
     if args.limit:
@@ -509,18 +561,27 @@ def main():
             label = fetch_label(name=re.split(r"[\s,:/]", title.strip())[0])
             drug = label.get("brand") or title
         rw = route_words(label.get("route") or t["route"])
-        d = PITCH_DIR / slug(title)
+        folder = slug(f"{recipient} {title}") if t["kind"] == "manuf" else slug(title)
+        d = PITCH_DIR / folder
         d.mkdir(parents=True, exist_ok=True)
-        msg_txt = outreach_fda(drug, clean_recipient(recipient) if False else recipient, label, rw, t["ta"]) if t["kind"] == "fda" else outreach_rfp(title, clean_recipient(recipient))
+        if t["kind"] == "fda":
+            msg_txt = outreach_fda(drug, recipient, label, rw, t["ta"])
+        elif t["kind"] == "manuf":
+            msg_txt = outreach_manuf(drug, recipient, label, rw, t["ta"])
+        else:
+            msg_txt = outreach_rfp(title, clean_recipient(recipient))
         (d / "outreach.txt").write_text(msg_txt)
         hp, pp = d / "pitch.html", d / "pitch.pdf"
         hp.write_text(pitch_html(drug, recipient, label, rw, t["ta"], is_rfp))
-        try:
-            render_pdf(hp, pp)
-            ok = pp.exists()
-        except Exception as ex:
-            ok = False
-            print(f"  {drug}: pdf failed ({ex})")
+        if args.no_pdf:
+            ok = pp.exists()  # keep any previously-rendered PDF; don't launch Chrome
+        else:
+            try:
+                render_pdf(hp, pp)
+                ok = pp.exists()
+            except Exception as ex:
+                ok = False
+                print(f"  {drug}: pdf failed ({ex})")
         index[t["cid"]] = {"drug": drug, "mfr": clean_recipient(recipient) if is_rfp else recipient,
                            "pdf": str(pp) if ok else "", "outreach": msg_txt, "kind": t["kind"]}
         print(f"  ✓ [{t['kind']}] {drug[:18]:18} -> {'pdf' if ok else 'no-pdf'}")

@@ -3,6 +3,11 @@ config/.env
 *.pem
 *.key
 
+# ── Raw contact / lead data — never commit ──────────────
+# (all lead PII lives under data/, already ignored below; these are belt-and-suspenders)
+*.csv
+*.xlsx
+
 # ── Proprietary / internal — do not publish ─────────────
 RFP Perigon Folder Historical/
 
@@ -15,6 +20,8 @@ assets/
 *.mp4
 
 # ── Generated output (rebuilt nightly by refresh.sh) ────
+# NOTE: dashboard.html is the PLAINTEXT board (contains contacts) — never commit it.
+# The encrypted, password-gated index.html IS committed (only ciphertext) — see below.
 dashboard.html
 overview.html
 overview.pdf
@@ -22,6 +29,10 @@ pitches/
 drafts/
 knowledge_base/
 data/
+
+# ── Encrypted public page — this ONE generated file IS committed ──
+# index.html holds only an AES-256-GCM blob; unreadable without the passphrase.
+!index.html
 
 # ── Python ──────────────────────────────────────────────
 __pycache__/

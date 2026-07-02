@@ -48,6 +48,7 @@ def days_left(deadline):
 # ---------- load ----------
 recs = {k: load(OPP / f"current_{k}.json", {}).get("records", [])
         for k in ("sam", "fda", "pipeline", "state", "dose")}
+manuf = load(OPP / "current_manufacturers.json", {}).get("records", [])  # Lead List (gitignored)
 analysis = load(OPP / "rfp_analysis.json", {})  # SAM PDF fit verdicts, keyed by notice id
 pitches = load(OPP / "pitches_index.json", {})  # per-drug outreach + pitch PDF, keyed by card id
 inv = load(KB / "asset_inventory.json", {"by_category": {}})
@@ -155,8 +156,28 @@ def qualify_dose(r):
     return fit, est, blockers, steps, links, ""
 
 
+def qualify_manuf(r):
+    org = r.get("org", "the manufacturer")
+    prods = r.get("products", "")
+    drugs = r.get("drugs", [])
+    c = r.get("contact", {})
+    owner = c.get("owner", "")
+    focus = (", ".join(drugs[:3]) if drugs else (prods[:60] if prods else "specialty portfolio"))
+    fit = f"Manufacturer BD — {org}: {focus}"
+    est = "~1–2h — capability pitch / intro meeting (relationship play, no public RFP)"
+    blockers = ["No public RFP — relationship/timing play"]
+    steps = [
+        f"Owner {e(owner) or '(unassigned)'}: advance the {e(org)} conversation",
+        "Send / append the Perigon + Medesto capability pitch",
+        "Log next touch + outcome in the notes",
+    ]
+    links = [{"label": f"✉ {em}", "url": f"mailto:{em}"} for em in c.get("emails", [])]
+    return fit, est, blockers, steps, links, ""
+
+
 def make_card(r, kind):
     fit_analysis = None
+    contact, products = {}, r.get("products", "")
     if kind == "rfp":
         fit, est, blockers, steps, links, body = qualify_rfp(r)
         cid = r.get("id", "")
@@ -167,6 +188,10 @@ def make_card(r, kind):
     elif kind == "dose":
         fit, est, blockers, steps, links, body = qualify_dose(r)
         cid = "dose:" + r.get("nct", "")
+    elif kind == "manuf":
+        fit, est, blockers, steps, links, body = qualify_manuf(r)
+        cid = r.get("id") or ("manuf:" + r.get("org", ""))
+        contact = r.get("contact", {})
     else:
         fit, est, blockers, steps, links, body = qualify_pipeline(r)
         cid = "pipe:" + r.get("nct", "")
@@ -178,12 +203,14 @@ def make_card(r, kind):
         "steps": steps, "links": [l for l in links if l.get("url")], "body": body,
         "naics": r.get("naics", ""), "notice": r.get("notice", ""), "pin": r.get("extra", {}).get("pin", ""),
         "analysis": fit_analysis, "pitch": pitches.get(cid),
+        "contact": contact, "products": products,
     }
 
 
 cards = ([make_card(r, "rfp") for r in recs["sam"]] +
          [make_card(r, "rfp") for r in recs["state"]] +
          [make_card(r, "lead") for r in recs["fda"]] +
+         [make_card(r, "manuf") for r in manuf] +
          [make_card(r, "pipeline") for r in recs["pipeline"]] +
          [make_card(r, "dose") for r in recs["dose"]])
 cards.sort(key=lambda c: c["score"], reverse=True)
@@ -191,7 +218,8 @@ cards.sort(key=lambda c: c["score"], reverse=True)
 
 # ---------- render ----------
 
-KIND_LABEL = {"rfp": "RFP", "lead": "FDA APPROVAL", "pipeline": "PIPELINE", "dose": "DOSE · TRIAL"}
+KIND_LABEL = {"rfp": "RFP", "lead": "FDA APPROVAL", "pipeline": "PIPELINE", "dose": "DOSE · TRIAL",
+              "manuf": "LEAD LIST"}
 VERDICT_CLS = {"Strong fit": "ok", "Possible": "warn", "Likely out of scope": "bad"}
 
 
@@ -241,7 +269,7 @@ def card_html(c):
     body = f'<details class="bd"><summary>RFP details</summary><div class="body">{e(c["body"])}</div></details>' if c["body"] else ""
     ddl = e(str(c["deadline"])[:10]) if c["deadline"] else ""
     return f"""<div class="kcard" draggable="true" data-id="{e(c['id'])}" data-kind="{c['kind']}" data-deadline="{ddl}" data-text="{e((c['title']+' '+c['org']+' '+' '.join(c['drugs'])).lower())}">
-      <div class="kc-top"><span class="tag t-{c['kind']}">{KIND_LABEL[c['kind']]} · {e(c['source'])}</span><span class="kc-score">{e(c['score'])}</span></div>
+      <div class="kc-top"><span class="tag t-{c['kind']}">{KIND_LABEL[c['kind']]} · {e(c['source'])}</span><span class="kc-topr"><button class="addc" data-id="{e(c['id'])}" title="Contact &amp; details">+</button><span class="kc-score">{e(c['score'])}</span></span></div>
       <h4>{e(c['title'])}</h4>
       <div class="kc-org">{e(c['org'])}</div>
       {f'<div class="vrow">{vbadge}</div>' if vbadge else ''}
@@ -271,6 +299,16 @@ n_rfp = sum(1 for c in cards if c["kind"] == "rfp")
 n_lead = sum(1 for c in cards if c["kind"] == "lead")
 n_pipe = sum(1 for c in cards if c["kind"] == "pipeline")
 n_dose = sum(1 for c in cards if c["kind"] == "dose")
+n_manuf = sum(1 for c in cards if c["kind"] == "manuf")
+
+# per-card contact + details payload for the "+" popup (embedded as JSON, gitignored output)
+contacts_map = {c["id"]: {
+    "title": c["title"], "org": c["org"], "kind": c["kind"], "kindLabel": KIND_LABEL[c["kind"]],
+    "source": c["source"], "products": c.get("products", ""), "drugs": c.get("drugs", []),
+    "contact": c.get("contact", {}) or {}, "fit": c["fit"], "score": c["score"],
+    "links": c["links"],
+} for c in cards}
+contacts_json = json.dumps(contacts_map, ensure_ascii=False).replace("</", "<\\/")
 readiness = round(100 * req_have / max(len(required), 1))
 gaps_html = "".join(f"<li><b>{e(g['label'])}</b> — {e(g.get('notes') or '')}</li>" for g in gaps)
 
@@ -356,15 +394,35 @@ a{{color:var(--acc)}}
 .ansec{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin:6px 0}}.ansec summary{{cursor:pointer;font-weight:600}}
 .ans{{display:flex;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:12.5px}}.ans-k{{min-width:160px;color:var(--mut)}}
 .conf{{color:var(--warn);font-size:12px;margin:5px 0}}
+.t-manuf{{background:rgba(240,140,60,.16);color:#f0913c}}
+.kc-topr{{display:flex;align-items:center;gap:8px}}
+.addc{{background:var(--inset);border:1px solid var(--line);color:var(--acc);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}}
+.addc:hover{{border-color:var(--acc);background:var(--panel)}}
+.cmodal{{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center}}
+.cmodal[hidden]{{display:none}}
+.cback{{position:absolute;inset:0;background:rgba(4,8,16,.62)}}
+.cbox{{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:520px;width:92%;max-height:86vh;overflow:auto;padding:20px 22px;box-shadow:0 24px 70px rgba(0,0,0,.55)}}
+.cx{{position:absolute;top:11px;right:13px;background:transparent;border:none;color:var(--mut);font-size:16px;cursor:pointer}}
+.cbody h3{{margin:2px 0 0;font-size:18px}}
+.cm-kind{{font-size:11px;font-weight:700;letter-spacing:.05em;color:var(--mut);text-transform:uppercase}}
+.cm-sec{{margin-top:14px}}.cm-lbl{{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin-bottom:5px}}
+.cm-owner{{display:inline-block;background:rgba(77,139,240,.16);color:var(--acc);border-radius:6px;padding:2px 9px;font-size:12.5px;font-weight:600}}
+.cm-person{{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 10px;background:var(--inset);border:1px solid var(--line);border-radius:8px;margin:5px 0;font-size:12.5px}}
+.cm-person a{{font-size:11.5px;text-decoration:none;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:3px 8px;margin-left:5px;white-space:nowrap}}
+.cm-person a:hover{{border-color:var(--acc)}}
+.cm-notes{{white-space:pre-wrap;font-size:12.5px;background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:9px 11px;line-height:1.5}}
+.cm-chips{{display:flex;flex-wrap:wrap;gap:5px}}.cm-chip{{font-size:11.5px;background:var(--inset);border:1px solid var(--line);border-radius:5px;padding:2px 8px}}
+.cm-links{{display:flex;flex-wrap:wrap;gap:6px}}
 </style></head><body>
 <header>
   <h1>Perigon RFP Board</h1>
   <div class="sub">Discover → qualify → submit · {len(cards)} opportunities · generated {updated}{(' · ' + sam_note) if sam_note else ''}</div>
   <div class="toolbar">
-    <span class="stat"><b>{n_rfp}</b> RFPs · <b>{n_lead}</b> FDA · <b>{n_pipe}</b> pipeline · <b>{n_dose}</b> DOSE · <b>{readiness}%</b> docs ready</span>
+    <span class="stat"><b>{n_rfp}</b> RFPs · <b>{n_lead}</b> FDA · <b>{n_manuf}</b> leads · <b>{n_pipe}</b> pipeline · <b>{n_dose}</b> DOSE · <b>{readiness}%</b> docs ready</span>
     <span class="pill on" data-f="all">All</span>
     <span class="pill" data-f="rfp">RFPs</span>
     <span class="pill" data-f="lead">FDA approvals</span>
+    <span class="pill" data-f="manuf">Lead List</span>
     <span class="pill" data-f="pipeline">Pipeline</span>
     <span class="pill" data-f="dose">DOSE (trials)</span>
     <input class="search" placeholder="search drug / manufacturer / program…">
@@ -375,6 +433,7 @@ a{{color:var(--acc)}}
 </header>
 <div class="board">{col_html}</div>
 <div id="stash" style="display:none">{cards_html}</div>
+<div id="cmodal" class="cmodal" hidden><div class="cback"></div><div class="cbox"><button class="cx" title="Close">✕</button><div class="cbody"></div></div></div>
 <div class="foot">
   <h2>What we don't have yet — {len(gaps)} gaps blocking submission</h2>
   <ul class="gaps">{gaps_html}</ul>
@@ -457,6 +516,37 @@ document.querySelector('.export').addEventListener('click',()=>{{
   const blob=new Blob([JSON.stringify({{exported:new Date().toISOString(),decisions:rows}},null,2)],{{type:'application/json'}});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rfp-board-decisions.json';a.click();
 }});
+// contact / details popup ("+" on each card)
+const CONTACTS={contacts_json};
+const modal=document.getElementById('cmodal');
+const cbody=modal.querySelector('.cbody');
+function esc(s){{return (s==null?'':String(s)).replace(/[&<>"]/g,m=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}}[m]))}}
+function liLink(name,org){{return 'https://www.linkedin.com/search/results/people/?keywords='+encodeURIComponent((name+' '+(org||'')).trim())}}
+function openContact(id){{
+  const c=CONTACTS[id]; if(!c)return; const ct=c.contact||{{}};
+  let h='<div class="cm-kind">'+esc(c.kindLabel)+' · '+esc(c.source)+' · score '+esc(c.score)+'</div><h3>'+esc(c.title)+'</h3>';
+  if(c.org&&c.org!==c.title)h+='<div class="kc-org">'+esc(c.org)+'</div>';
+  if(c.fit)h+='<div class="cm-sec"><div class="cm-lbl">Fit</div><div>'+esc(c.fit)+'</div></div>';
+  if(ct.owner)h+='<div class="cm-sec"><div class="cm-lbl">Perigon lead</div><span class="cm-owner">'+esc(ct.owner)+'</span></div>';
+  const names=ct.names||[], emails=ct.emails||[];
+  if(names.length||emails.length){{
+    h+='<div class="cm-sec"><div class="cm-lbl">Contact</div>';
+    names.forEach(n=>{{h+='<div class="cm-person"><span>'+esc(n)+'</span><a href="'+esc(liLink(n,c.org))+'" target="_blank">LinkedIn ↗</a></div>';}});
+    emails.forEach(m=>{{h+='<div class="cm-person"><span>'+esc(m)+'</span><a href="mailto:'+esc(m)+'">✉ Email</a></div>';}});
+    h+='</div>';
+  }}
+  const chips=(c.drugs&&c.drugs.length)?c.drugs:(c.products?[c.products]:[]);
+  if(chips.length)h+='<div class="cm-sec"><div class="cm-lbl">Products / focus</div><div class="cm-chips">'+chips.map(x=>'<span class="cm-chip">💊 '+esc(x)+'</span>').join('')+'</div></div>';
+  if(ct.notes)h+='<div class="cm-sec"><div class="cm-lbl">Notes</div><div class="cm-notes">'+esc(ct.notes)+'</div></div>';
+  if(c.links&&c.links.length)h+='<div class="cm-sec"><div class="cm-lbl">Links</div><div class="cm-links">'+c.links.map(l=>'<a class="dl" href="'+esc(l.url)+'" target="_blank">'+esc(l.label)+'</a>').join('')+'</div></div>';
+  if(!names.length&&!emails.length&&!ct.owner&&!(c.links&&c.links.length))h+='<div class="cm-sec"><div class="cm-notes">No stored contact — reach out via the notice/source.</div></div>';
+  cbody.innerHTML=h; modal.hidden=false;
+}}
+function closeContact(){{modal.hidden=true;}}
+document.querySelectorAll('.addc').forEach(b=>b.addEventListener('click',e=>{{e.stopPropagation();openContact(b.dataset.id);}}));
+modal.querySelector('.cx').addEventListener('click',closeContact);
+modal.querySelector('.cback').addEventListener('click',closeContact);
+document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeContact();}});
 place();
 </script></body></html>"""
 
