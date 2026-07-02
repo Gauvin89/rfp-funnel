@@ -171,7 +171,8 @@ def qualify_manuf(r):
         "Send / append the Perigon + Medesto capability pitch",
         "Log next touch + outcome in the notes",
     ]
-    links = [{"label": f"✉ {em}", "url": f"mailto:{em}"} for em in c.get("emails", [])]
+    links = [{"label": f"📄 {m['name']} PI (PDF)", "url": m["pdf"]} for m in r.get("med_pdfs", [])]
+    links += [{"label": f"✉ {em}", "url": f"mailto:{em}"} for em in c.get("emails", [])]
     return fit, est, blockers, steps, links, ""
 
 
@@ -272,6 +273,7 @@ def card_html(c):
       <div class="kc-top"><span class="tag t-{c['kind']}">{KIND_LABEL[c['kind']]} · {e(c['source'])}</span><span class="kc-topr"><button class="addc" data-id="{e(c['id'])}" title="Contact &amp; details">+</button><span class="kc-score">{e(c['score'])}</span></span></div>
       <h4>{e(c['title'])}</h4>
       <div class="kc-org">{e(c['org'])}</div>
+      <div class="kc-touch"></div>
       {f'<div class="vrow">{vbadge}</div>' if vbadge else ''}
       {due_line}
       <div class="chips">{''.join(chips)}</div>
@@ -413,9 +415,19 @@ a{{color:var(--acc)}}
 .cm-notes{{white-space:pre-wrap;font-size:12.5px;background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:9px 11px;line-height:1.5}}
 .cm-chips{{display:flex;flex-wrap:wrap;gap:5px}}.cm-chip{{font-size:11.5px;background:var(--inset);border:1px solid var(--line);border-radius:5px;padding:2px 8px}}
 .cm-links{{display:flex;flex-wrap:wrap;gap:6px}}
+.legend{{background:var(--inset);border:1px solid var(--line);color:var(--acc);width:22px;height:22px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1;padding:0;vertical-align:middle;margin-left:4px}}
+.legend:hover{{border-color:var(--acc)}}
+.kc-touch{{display:none;font-size:11px;color:var(--warn);margin:1px 0 5px}}
+.cm-touch{{font-size:12.5px;margin-bottom:8px;color:var(--txt)}}.cm-touch b{{color:var(--warn)}}
+.cm-ta{{width:100%;height:56px;background:var(--inset);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:8px;font-size:12.5px;resize:vertical;margin-bottom:6px;font-family:inherit}}
+.cm-thread{{margin-top:10px;display:flex;flex-direction:column;gap:6px}}
+.cm-note{{background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12.5px;white-space:pre-wrap}}
+.cm-note-ts{{font-size:10.5px;color:var(--mut);margin-bottom:2px}}
+.cm-empty{{font-size:12px;color:var(--mut)}}
+.lg{{margin:5px 0;font-size:12.5px;display:flex;align-items:center;gap:7px}}.lg .tag{{flex:0 0 auto}}
 </style></head><body>
 <header>
-  <h1>Perigon RFP Board</h1>
+  <h1>Perigon RFP Board <button class="legend" id="legendBtn" title="Legend — what am I looking at?">&#9432;</button></h1>
   <div class="sub">Discover → qualify → submit · {len(cards)} opportunities · generated {updated}{(' · ' + sam_note) if sam_note else ''}</div>
   <div class="toolbar">
     <span class="stat"><b>{n_rfp}</b> RFPs · <b>{n_lead}</b> FDA · <b>{n_manuf}</b> leads · <b>{n_pipe}</b> pipeline · <b>{n_dose}</b> DOSE · <b>{readiness}%</b> docs ready</span>
@@ -434,6 +446,23 @@ a{{color:var(--acc)}}
 <div class="board">{col_html}</div>
 <div id="stash" style="display:none">{cards_html}</div>
 <div id="cmodal" class="cmodal" hidden><div class="cback"></div><div class="cbox"><button class="cx" title="Close">✕</button><div class="cbody"></div></div></div>
+<template id="legendTpl">
+  <div class="cm-kind">Legend &middot; how to use this board</div><h3>What am I looking at?</h3>
+  <div class="cm-sec"><div class="cm-lbl">A tile</div><div>Each card is one opportunity or lead. Drag it between columns as it moves through your pipeline — your columns save in this browser.</div></div>
+  <div class="cm-sec"><div class="cm-lbl">Card type (colored tag, top-left)</div>
+    <div class="lg"><span class="tag t-rfp">RFP</span> government / agency solicitation</div>
+    <div class="lg"><span class="tag t-lead">FDA APPROVAL</span> new drug approval → LDD / hub target</div>
+    <div class="lg"><span class="tag t-manuf">LEAD LIST</span> manufacturer BD contact (your list)</div>
+    <div class="lg"><span class="tag t-pipeline">PIPELINE</span> phase-3 drug nearing launch</div>
+    <div class="lg"><span class="tag t-dose">DOSE · TRIAL</span> oral trial needing pharmacy support</div>
+  </div>
+  <div class="cm-sec"><div class="cm-lbl">Score (number, top-right)</div><div>Priority score — higher = more relevant / more ready to pursue. RFPs add a solicitation-PDF fit verdict; Lead-List cards score on named product, contact, assigned owner and momentum in your notes.</div></div>
+  <div class="cm-sec"><div class="cm-lbl">The + button</div><div>Opens contact &amp; details: contact name(s), LinkedIn lookup, email, the Perigon owner, official medication PDFs, and a place to log touches and add notes.</div></div>
+  <div class="cm-sec"><div class="cm-lbl">🕓 Last touch</div><div>The date of your most recent note on a card. Add notes in the + panel — the thread and last-touch date save in this browser.</div></div>
+  <div class="cm-sec"><div class="cm-lbl">Columns</div><div>New → Reviewing → Preparing → Submitted → Closed → Past Deadline → Out of Scope. “✕ Out of scope” quick-files a card.</div></div>
+  <div class="cm-sec"><div class="cm-lbl">Filter &amp; search</div><div>Pills filter by type; search matches drug / manufacturer / program. ⬇ Export downloads your column decisions; 🌙 toggles theme.</div></div>
+  <div class="cm-sec"><div class="cm-notes">Everything you change — columns, notes, touches, theme — is stored locally in this browser. It is not shared between devices or teammates.</div></div>
+</template>
 <div class="foot">
   <h2>What we don't have yet — {len(gaps)} gaps blocking submission</h2>
   <ul class="gaps">{gaps_html}</ul>
@@ -540,14 +569,40 @@ function openContact(id){{
   if(ct.notes)h+='<div class="cm-sec"><div class="cm-lbl">Notes</div><div class="cm-notes">'+esc(ct.notes)+'</div></div>';
   if(c.links&&c.links.length)h+='<div class="cm-sec"><div class="cm-lbl">Links</div><div class="cm-links">'+c.links.map(l=>'<a class="dl" href="'+esc(l.url)+'" target="_blank">'+esc(l.label)+'</a>').join('')+'</div></div>';
   if(!names.length&&!emails.length&&!ct.owner&&!(c.links&&c.links.length))h+='<div class="cm-sec"><div class="cm-notes">No stored contact — reach out via the notice/source.</div></div>';
+  var nd=noteData(id);
+  h+='<div class="cm-sec"><div class="cm-lbl">Activity / touch log</div>';
+  h+='<div class="cm-touch">Last touch: <b id="cm-lt">'+(nd.touch||'—')+'</b></div>';
+  h+='<textarea id="cm-note" class="cm-ta" placeholder="Add a note — call, email, meeting outcome…"></textarea>';
+  h+='<button class="copyb" id="cm-add">+ Add note (logs today)</button>';
+  h+='<div class="cm-thread" id="cm-thread">'+renderThread(nd.log)+'</div></div>';
   cbody.innerHTML=h; modal.hidden=false;
+  var add=document.getElementById('cm-add');
+  if(add)add.addEventListener('click',function(){{
+    var ta=document.getElementById('cm-note');addNote(id,ta.value);ta.value='';
+    var d=noteData(id);document.getElementById('cm-thread').innerHTML=renderThread(d.log);
+    document.getElementById('cm-lt').textContent=d.touch||'—';
+  }});
 }}
 function closeContact(){{modal.hidden=true;}}
+// per-card notes + last-touch date (localStorage; saved per browser)
+const NKEY='rfpNotes';
+function nst(){{try{{return JSON.parse(localStorage.getItem(NKEY)||'{{}}')}}catch(e){{return {{}}}}}}
+function nsave(o){{localStorage.setItem(NKEY,JSON.stringify(o))}}
+function noteData(id){{var o=nst();return o[id]||{{touch:'',log:[]}}}}
+function pad(n){{return (n<10?'0':'')+n}}
+function nowStamp(){{var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())}}
+function addNote(id,text){{text=(text||'').trim();if(!text)return;var o=nst();var en=o[id]||{{touch:'',log:[]}};en.log.push({{ts:nowStamp(),text:text}});en.touch=nowStamp().slice(0,10);o[id]=en;nsave(o);paintTouch(id);}}
+function renderThread(log){{if(!log||!log.length)return '<div class="cm-empty">No notes yet — add your first touch above.</div>';return log.slice().reverse().map(function(n){{return '<div class="cm-note"><div class="cm-note-ts">'+esc(n.ts)+'</div><div>'+esc(n.text)+'</div></div>';}}).join('');}}
+function paintTouch(id){{var card=document.querySelector('.kcard[data-id="'+CSS.escape(id)+'"]');if(!card)return;var el=card.querySelector('.kc-touch');if(!el)return;var t=noteData(id).touch;if(t){{el.textContent='🕓 last touch '+t;el.style.display='';}}else{{el.style.display='none';}}}}
+function paintAllTouches(){{document.querySelectorAll('.kcard').forEach(function(c){{paintTouch(c.dataset.id);}});}}
 document.querySelectorAll('.addc').forEach(b=>b.addEventListener('click',e=>{{e.stopPropagation();openContact(b.dataset.id);}}));
 modal.querySelector('.cx').addEventListener('click',closeContact);
 modal.querySelector('.cback').addEventListener('click',closeContact);
 document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeContact();}});
+var lb=document.getElementById('legendBtn');
+if(lb)lb.addEventListener('click',function(){{cbody.innerHTML=document.getElementById('legendTpl').innerHTML;modal.hidden=false;}});
 place();
+paintAllTouches();
 </script></body></html>"""
 
 OUT.write_text(DOC)

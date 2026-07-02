@@ -24,6 +24,7 @@ import common as C  # noqa: E402
 LEADS_DIR = C.ROOT / "data" / "leads"
 DEFAULT_CSV = LEADS_DIR / "lead_list_2026.csv"
 OUT = C.OPP_DIR / "current_manufacturers.json"
+DAILYMED = "https://dailymed.nlm.nih.gov/dailymed/services/v2/spls.json"
 
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 # words that mean "no concrete product named" — used to reject vague product tokens
@@ -93,9 +94,42 @@ def slugify(s):
     return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:40]
 
 
+def _dm_lookup(name):
+    try:
+        d = C.http_get_json(DAILYMED, {"drug_name": name, "pagesize": 1}, timeout=15)
+        data = d.get("data") or []
+        if data and data[0].get("setid"):
+            return data[0]["setid"], (data[0].get("title") or "")
+    except Exception:
+        pass
+    return None, ""
+
+
+def resolve_med(drug, cache):
+    """Resolve a drug name to its DailyMed prescribing-information PDF (public URL)."""
+    key = drug.lower()
+    if key in cache:
+        return cache[key]
+    sid, title = _dm_lookup(drug)
+    if not sid and " " in drug:  # retry on the longest (brand-like) word
+        tok = max(drug.split(), key=len)
+        if len(tok) > 3:
+            sid, title = _dm_lookup(tok)
+    res = None
+    if sid:
+        res = {"name": drug, "setid": sid,
+               "pdf": f"https://dailymed.nlm.nih.gov/dailymed/downloadpdffile.cfm?setId={sid}",
+               "info": f"https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid={sid}",
+               "label": title[:90]}
+    cache[key] = res
+    return res
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--csv", default=str(DEFAULT_CSV))
+    ap.add_argument("--no-enrich", action="store_true",
+                    help="skip DailyMed medication-PDF lookups (offline / faster)")
     args = ap.parse_args()
     path = Path(args.csv)
     OUT.parent.mkdir(parents=True, exist_ok=True)
@@ -146,9 +180,26 @@ def main():
         c = r["contact"]
         r["score"] = score(r["drugs"], c["emails"], c["owner"], c["notes"])
     recs.sort(key=lambda r: r["score"], reverse=True)
+
+    n_pdf = 0
+    if args.no_enrich:
+        for r in recs:
+            r["med_pdfs"] = []
+    else:
+        cache = {}
+        for r in recs:
+            meds = []
+            for dr in r["drugs"][:3]:
+                m = resolve_med(dr, cache)
+                if m:
+                    meds.append(m)
+            r["med_pdfs"] = meds
+            n_pdf += len(meds)
+
     OUT.write_text(json.dumps({"records": recs}, indent=2))
     named_ct = sum(1 for r in recs if r["drugs"])
-    print(f"✓ {len(recs)} manufacturer leads → {OUT.name}  ({named_ct} with a named product)")
+    print(f"✓ {len(recs)} manufacturer leads → {OUT.name}  "
+          f"({named_ct} with a named product, {n_pdf} medication PDFs linked)")
 
 
 if __name__ == "__main__":
