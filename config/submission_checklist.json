@@ -1,0 +1,28 @@
+{
+  "_comment": "Canonical specialty-pharmacy RFP submission package, derived from the winning Sanofi 2024 proposal. Each item maps to an asset category in knowledge_base/asset_inventory.json. 'have' is computed by the dashboard from what's present. Items with maps_to=null are typically MISSING (we don't keep a reusable file) and surface as gaps to gather.",
+
+  "items": [
+    {"id": "questionnaire",     "label": "Vendor questionnaire / RFP question responses", "required": true,  "maps_to": "vendor_questionnaire", "prefill": true,  "notes": "Core Q&A — pre-fillable from company answer bank."},
+    {"id": "pricing",           "label": "Cost / pricing template",                        "required": true,  "maps_to": "pricing_cost",        "prefill": false, "notes": "Per-RFP pricing; reuse prior template structure, re-quote."},
+    {"id": "company_overview",  "label": "Company overview & leadership bios",             "required": true,  "maps_to": "company_overview_360_bios", "prefill": true, "notes": "PerigonHealth 360 Bios."},
+    {"id": "key_personnel",     "label": "Key personnel CVs",                              "required": true,  "maps_to": "cv_bio",              "prefill": false, "notes": "Justin Gauvin, Melissa Marchetti, Stephanie Simpson on file."},
+    {"id": "org_chart",         "label": "Org chart / account management structure",       "required": true,  "maps_to": "org_chart",           "prefill": false, "notes": ""},
+    {"id": "case_studies",      "label": "Case studies / past performance",                "required": true,  "maps_to": "case_study",          "prefill": false, "notes": "Two finalized case studies available."},
+    {"id": "code_of_conduct",   "label": "Code of Conduct",                                "required": true,  "maps_to": "code_of_conduct",     "prefill": false, "notes": ""},
+    {"id": "privacy_policy",    "label": "Privacy Policy",                                 "required": true,  "maps_to": "privacy_policy",      "prefill": false, "notes": ""},
+    {"id": "emergency_dr",      "label": "Emergency Preparedness & Disaster Recovery plan","required": true,  "maps_to": "emergency_dr",        "prefill": false, "notes": ""},
+    {"id": "insurance",         "label": "Certificate of Commercial Insurance",            "required": true,  "maps_to": "insurance",           "prefill": false, "notes": "Confirm coverage dates are current."},
+    {"id": "nda",               "label": "NDA / confidentiality agreement",                "required": false, "maps_to": "nda_noncompete",      "prefill": false, "notes": ""},
+    {"id": "fulfillment_flow",  "label": "Pharmacy fulfillment flow diagram",              "required": false, "maps_to": "fulfillment_flow",    "prefill": false, "notes": ""},
+    {"id": "process_flow",      "label": "Patient program process flow",                   "required": false, "maps_to": "process_flow",        "prefill": false, "notes": ""},
+    {"id": "platform_screens",  "label": "Platform / technology screenshots",              "required": false, "maps_to": "platform_screenshots","prefill": false, "notes": "Medesto platform."},
+    {"id": "supplier_diversity","label": "Supplier diversity classification",              "required": false, "maps_to": "supplier_diversity",  "prefill": false, "notes": ""},
+    {"id": "financials",        "label": "Financial statements",                           "required": true,  "maps_to": "financials",          "prefill": false, "notes": "Confidential — confirm latest period."},
+    {"id": "intent_to_bid",     "label": "Signed intent-to-bid / vendor agreement",        "required": false, "maps_to": "intent_to_bid",       "prefill": false, "notes": "Per-RFP signature."},
+
+    {"id": "accreditation_cert","label": "Accreditation certificates (URAC & ACHC)",       "required": true,  "maps_to": null,                  "prefill": false, "notes": "GAP: we cite URAC/ACHC in answers but no certificate file is on hand — gather the actual PDFs."},
+    {"id": "state_licenses",    "label": "State pharmacy licenses / permits",              "required": true,  "maps_to": null,                  "prefill": false, "notes": "GAP: per-state pharmacy licensure docs not in the reusable library."},
+    {"id": "w9_registration",   "label": "W-9 / business registration / SAM UEI",          "required": true,  "maps_to": null,                  "prefill": false, "notes": "GAP: needed for gov RFPs (federal requires SAM.gov UEI registration)."},
+    {"id": "soc2_hitrust",      "label": "SOC 2 / HITRUST attestation report",             "required": false, "maps_to": null,                  "prefill": false, "notes": "VERIFY: SOC2/HITRUST referenced as a preference in diligence — confirm Perigon's OWN current certification status and obtain the report."}
+  ]
+}

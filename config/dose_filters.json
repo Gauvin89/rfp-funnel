@@ -1,0 +1,12 @@
+{
+  "_comment": "DOSE filter — ClinicalTrials.gov studies that have NOT yet started (NOT_YET_RECRUITING) with a start date today or in the future, testing ORAL / pill medications. These are opportunities for Perigon to provide clinical-trial pharmacy support (IMP dispensing, adherence, Medesto-Dose) DURING the trial — get in before it starts.",
+
+  "oral_terms": ["oral", "tablet", "capsule", "pill", "by mouth", "orally", "lozenge", "sublingual", "chewable", "softgel", "caplet"],
+  "exclude_terms": ["injection", "injectable", "infusion", "intravenous", " iv ", "subcutaneous", "intramuscular", "implant", "ophthalmic", "intrathecal", "transdermal", "patch", "suppository", "inhaled", "inhalation", "nasal", "topical"],
+
+  "max_pages": 8,
+  "page_size": 100,
+  "request_timeout_s": 30,
+  "industry_only": false,
+  "min_score": 2
+}

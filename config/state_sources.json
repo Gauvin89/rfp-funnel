@@ -1,0 +1,46 @@
+{
+  "_comment": "State/local procurement monitors. Adapter types: 'socrata' (clean JSON API, preferred), 'html' (scrape a server-rendered listing), 'placeholder' (documented, not automated). Add coverage by appending entries.",
+
+  "keywords": ["pharmac", "specialty drug", "340b", "medication", "prescription", "infusion", "compounding", "pharmacy benefit"],
+  "min_score": 1,
+  "request_timeout_s": 90,
+
+  "sources": [
+    {
+      "type": "socrata",
+      "name": "NYC City Record",
+      "domain": "data.cityofnewyork.us",
+      "resource": "dg92-zbpx",
+      "text_fields": ["short_title"],
+      "id_field": "request_id",
+      "title_field": "short_title",
+      "agency_field": "agency_name",
+      "date_field": "start_date",
+      "deadline_field": "due_date",
+      "notice_field": "type_of_notice_description",
+      "order": "start_date DESC",
+      "since_days": 120,
+      "limit": 300,
+      "human_url": "https://a856-cityrecord.nyc.gov/Search/Advanced",
+      "pin_field": "pin",
+      "category_field": "category_description",
+      "body_field": "additional_description_1",
+      "selection_field": "selection_method_description",
+      "contact_fields": {"name": "contact_name", "email": "email", "phone": "contact_phone", "address": "address_to_request"},
+      "exclude_categories": ["construction"]
+    },
+    {
+      "type": "html",
+      "name": "Michigan DTMB Bid Proposals",
+      "url": "https://www.michigan.gov/dtmb/procurement/contractconnect/bid-proposals",
+      "parser": "mi_accordion",
+      "link_base": "https://www.michigan.gov",
+      "skip_status": ["awarded", "cancelled", "canceled"]
+    },
+    {
+      "type": "placeholder",
+      "name": "Florida (AHCA Medicaid / MyFloridaMarketPlace)",
+      "note": "No clean FREE automated path. MFMP is a JS SPA whose API endpoint is built at runtime (not greppable); AHCA & DOH purchasing pages return 403/404 to scripts; the legacy VBS PL/SQL app is dead. Coverage options: (1) FREE — register for MFMP/VBS 'Electronic Notification' + AHCA 'Procurements' email alerts (manual triage); (2) PAID — HigherGov or GovTribe API covers FL + all states cleanly (~$1.8k/yr GovTribe); (3) BUILD — a headless-browser (Playwright) scraper of MFMP, brittle and higher-maintenance, on request."
+    }
+  ]
+}

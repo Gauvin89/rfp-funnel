@@ -1,0 +1,32 @@
+{
+  "_comment": "openFDA leading-indicator monitor. New BRANDED specialty drug approvals signal upcoming LDD-network / PSP / hub RFPs — i.e. manufacturers who will soon need a specialty-pharmacy partner (the Sanofi-type deal). Generics are dropped (they join existing networks, don't trigger new RFPs).",
+
+  "lookback_days": 45,
+  "max_pages": 6,
+  "page_size": 100,
+  "request_timeout_s": 60,
+  "enrich_label": true,
+  "min_score": 8,
+
+  "specialty_routes": ["INTRAVENOUS", "SUBCUTANEOUS", "INTRAMUSCULAR", "INFUS", "INTRATHECAL", "IMPLANT", "OPHTHALMIC", "INTRAVITREAL"],
+
+  "therapeutic_areas": [
+    "autoimmune", "rheumatoid", "psoriasis", "psoriatic", "crohn", "colitis", "lupus",
+    "oncology", "cancer", "carcinoma", "lymphoma", "leukemia", "myeloma", "tumor",
+    "multiple sclerosis", "hemophilia", "hepatitis", "hiv", "huntington",
+    "cystic fibrosis", "pulmonary arterial hypertension", "pulmonary fibrosis",
+    "epilepsy", "seizure", "migraine", "growth hormone", "neutropenia",
+    "osteoporosis", "anemia", "asthma", "fertility", "renal", "nephropathy",
+    "infectious", "immunodeficiency", "rare disease", "orphan", "enzyme",
+    "monoclonal", "biologic", "gene therapy", "antibody"
+  ],
+
+  "scoring": {
+    "bla_biologic": 12,
+    "nme_type1": 12,
+    "specialty_route": 6,
+    "therapeutic_match_each": 3,
+    "therapeutic_match_cap": 9,
+    "novel_branded_base": 2
+  }
+}

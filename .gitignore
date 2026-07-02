@@ -1,0 +1,33 @@
+# ── Secrets — never commit ──────────────────────────────
+config/.env
+*.pem
+*.key
+
+# ── Proprietary / internal — do not publish ─────────────
+RFP Perigon Folder Historical/
+
+# ── Brand & marketing assets (binary) ───────────────────
+assets/
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.mp4
+
+# ── Generated output (rebuilt nightly by refresh.sh) ────
+dashboard.html
+overview.html
+overview.pdf
+pitches/
+drafts/
+knowledge_base/
+data/
+
+# ── Python ──────────────────────────────────────────────
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ── OS ──────────────────────────────────────────────────
+.DS_Store

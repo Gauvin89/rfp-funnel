@@ -1,0 +1,18 @@
+{
+  "_comment": "Manufacturer-pipeline monitor (ClinicalTrials.gov). Industry-sponsored Phase 3 specialty drugs nearing completion = manufacturers about to build a limited-distribution network and pick pharmacy partners. This is the compliant way to surface 'Pfizer/JnJ/Moderna seeking pharmacies' — LinkedIn scraping is NOT used (ToS).",
+
+  "sponsors": ["Pfizer", "Janssen", "Johnson & Johnson", "Moderna", "AbbVie", "Gilead", "Amgen",
+    "Bristol-Myers Squibb", "Merck", "Novartis", "Genentech", "AstraZeneca", "Sanofi",
+    "Regeneron", "Vertex", "BioMarin", "Takeda", "GSK", "Eli Lilly", "Biogen", "Novo Nordisk"],
+
+  "specialty_conditions": ["cancer", "oncology", "carcinoma", "lymphoma", "leukemia", "myeloma",
+    "multiple sclerosis", "hemophilia", "cystic fibrosis", "pulmonary arterial hypertension",
+    "hepatitis", "hiv", "rheumatoid", "psoriasis", "crohn", "colitis", "lupus", "amyloidosis",
+    "muscular dystrophy", "sickle cell", "neutropenia", "growth hormone", "rare"],
+
+  "completion_from_months": -6,
+  "completion_to_months": 18,
+  "max_per_sponsor": 80,
+  "request_timeout_s": 30,
+  "min_score": 5
+}

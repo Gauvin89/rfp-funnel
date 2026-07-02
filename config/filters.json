@@ -1,0 +1,43 @@
+{
+  "_comment": "Tuning knobs for the SAM.gov pharmacy RFP funnel. Edit freely — no code changes needed.",
+
+  "_quota_note": "Non-federal SAM.gov keys get ~10 requests/DAY and the gateway stalls over-limit calls ~60s before returning 429. So we do ONE bulk pull/day and filter client-side. Keep lookback small for the daily cron; dedup (seen.jsonl) handles continuity.",
+
+  "lookback_days": 3,
+  "max_pages": 6,
+  "page_size": 1000,
+  "request_timeout_s": 45,
+  "max_seconds": 120,
+  "enrich_top_n": 0,
+
+  "naics_codes": ["446110", "456110", "424210", "325412", "621999", "621498", "621491", "621610"],
+
+  "title_keywords": ["pharmacy", "pharmaceutical", "prescription", "medication", "specialty drug", "infusion", "compounding", "dispensing"],
+
+  "_psc_note": "Drugs/pharmacy ONLY. 6505=Drugs & Biologicals, 6508=Medicated cosmetics, Q510=Pharmacology services. Do NOT add 6515/6520/6525/6530 — those are medical/dental/X-ray EQUIPMENT and pull in noise (MRI, dental stools).",
+  "psc_codes": ["6505", "6508", "Q510"],
+
+  "score_keywords": {
+    "specialty pharmacy": 10,
+    "limited distribution": 9,
+    "specialty rx": 9,
+    "340b": 8,
+    "specialty drug": 7,
+    "medication adherence": 6,
+    "medication therapy management": 6,
+    "mail order pharmacy": 5,
+    "pharmacy benefit": 5,
+    "pharmacy services": 5,
+    "infusion": 4,
+    "prior authorization": 4,
+    "compounding": 3,
+    "formulary": 3,
+    "dispensing": 3,
+    "prescription": 2,
+    "medication": 2
+  },
+
+  "notice_types_include": ["Solicitation", "Combined Synopsis/Solicitation", "Sources Sought", "Presolicitation", "Special Notice"],
+
+  "min_score": 4
+}
