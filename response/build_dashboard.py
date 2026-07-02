@@ -22,6 +22,24 @@ CFG = ROOT / "config"
 OUT = ROOT / "dashboard.html"
 
 
+def _env_val(key):
+    """Read a value from config/.env (gitignored) or the environment; '' if unset."""
+    import os
+    envf = CFG / ".env"
+    if envf.exists():
+        for line in envf.read_text().splitlines():
+            s = line.strip()
+            if s.startswith(key + "="):
+                return s.split("=", 1)[1].strip().strip('"').strip("'")
+    return os.environ.get(key, "")
+
+
+# Shared-notes backend (Cloudflare Worker). Empty until deployed → board runs
+# local-only (localStorage). Baked into the (encrypted) board, never committed.
+SYNC_URL = _env_val("WORKER_URL")
+SYNC_TOKEN = _env_val("BOARD_API_TOKEN")
+
+
 def load(path, default):
     try:
         return json.loads(Path(path).read_text())
@@ -311,6 +329,8 @@ contacts_map = {c["id"]: {
     "links": c["links"],
 } for c in cards}
 contacts_json = json.dumps(contacts_map, ensure_ascii=False).replace("</", "<\\/")
+sync_url_js = json.dumps(SYNC_URL)
+sync_token_js = json.dumps(SYNC_TOKEN)
 readiness = round(100 * req_have / max(len(required), 1))
 gaps_html = "".join(f"<li><b>{e(g['label'])}</b> — {e(g.get('notes') or '')}</li>" for g in gaps)
 
@@ -424,6 +444,9 @@ a{{color:var(--acc)}}
 .cm-note{{background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12.5px;white-space:pre-wrap}}
 .cm-note-ts{{font-size:10.5px;color:var(--mut);margin-bottom:2px}}
 .cm-empty{{font-size:12px;color:var(--mut)}}
+.cm-who{{width:100%;background:var(--inset);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:7px 9px;font-size:12.5px;margin-bottom:6px;font-family:inherit}}
+.cm-by{{color:var(--acc);font-weight:600}}
+.cm-sync{{font-size:11px;color:var(--ok)}}.cm-sync.off{{color:var(--mut)}}
 .lg{{margin:5px 0;font-size:12.5px;display:flex;align-items:center;gap:7px}}.lg .tag{{flex:0 0 auto}}
 </style></head><body>
 <header>
@@ -571,30 +594,38 @@ function openContact(id){{
   if(!names.length&&!emails.length&&!ct.owner&&!(c.links&&c.links.length))h+='<div class="cm-sec"><div class="cm-notes">No stored contact — reach out via the notice/source.</div></div>';
   var nd=noteData(id);
   h+='<div class="cm-sec"><div class="cm-lbl">Activity / touch log</div>';
-  h+='<div class="cm-touch">Last touch: <b id="cm-lt">'+(nd.touch||'—')+'</b></div>';
+  h+='<div class="cm-touch">Last touch: <b id="cm-lt">'+(nd.touch||'—')+'</b>'+(syncEnabled?' <span class="cm-sync">· shared</span>':' <span class="cm-sync off">· this browser only</span>')+'</div>';
+  h+='<input id="cm-who" class="cm-who" placeholder="Your name / initials" value="'+esc(localStorage.getItem(WHO_KEY)||'')+'">';
   h+='<textarea id="cm-note" class="cm-ta" placeholder="Add a note — call, email, meeting outcome…"></textarea>';
   h+='<button class="copyb" id="cm-add">+ Add note (logs today)</button>';
   h+='<div class="cm-thread" id="cm-thread">'+renderThread(nd.log)+'</div></div>';
   cbody.innerHTML=h; modal.hidden=false;
   var add=document.getElementById('cm-add');
   if(add)add.addEventListener('click',function(){{
-    var ta=document.getElementById('cm-note');addNote(id,ta.value);ta.value='';
+    var ta=document.getElementById('cm-note'),who=document.getElementById('cm-who');
+    addNote(id,ta.value,who?who.value:'');ta.value='';
     var d=noteData(id);document.getElementById('cm-thread').innerHTML=renderThread(d.log);
     document.getElementById('cm-lt').textContent=d.touch||'—';
   }});
 }}
 function closeContact(){{modal.hidden=true;}}
-// per-card notes + last-touch date (localStorage; saved per browser)
+// per-card notes + last-touch date (localStorage cache; optional shared backend)
 const NKEY='rfpNotes';
+const SYNC_URL={sync_url_js},SYNC_TOKEN={sync_token_js},WHO_KEY='rfpWho';
+const syncEnabled=!!(SYNC_URL&&SYNC_TOKEN);
 function nst(){{try{{return JSON.parse(localStorage.getItem(NKEY)||'{{}}')}}catch(e){{return {{}}}}}}
 function nsave(o){{localStorage.setItem(NKEY,JSON.stringify(o))}}
 function noteData(id){{var o=nst();return o[id]||{{touch:'',log:[]}}}}
 function pad(n){{return (n<10?'0':'')+n}}
 function nowStamp(){{var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())}}
-function addNote(id,text){{text=(text||'').trim();if(!text)return;var o=nst();var en=o[id]||{{touch:'',log:[]}};en.log.push({{ts:nowStamp(),text:text}});en.touch=nowStamp().slice(0,10);o[id]=en;nsave(o);paintTouch(id);}}
-function renderThread(log){{if(!log||!log.length)return '<div class="cm-empty">No notes yet — add your first touch above.</div>';return log.slice().reverse().map(function(n){{return '<div class="cm-note"><div class="cm-note-ts">'+esc(n.ts)+'</div><div>'+esc(n.text)+'</div></div>';}}).join('');}}
+function addNote(id,text,who){{text=(text||'').trim();if(!text)return;who=(who||'').trim();if(who)localStorage.setItem(WHO_KEY,who);var o=nst();var en=o[id]||{{touch:'',log:[]}};var note={{ts:nowStamp(),text:text,by:who}};en.log.push(note);en.touch=note.ts.slice(0,10);o[id]=en;nsave(o);paintTouch(id);if(syncEnabled)postNote(id,note).catch(function(){{}});}}
+function renderThread(log){{if(!log||!log.length)return '<div class="cm-empty">No notes yet — add your first touch above.</div>';return log.slice().reverse().map(function(n){{var by=n.by?('<span class="cm-by">'+esc(n.by)+'</span> · '):'';return '<div class="cm-note"><div class="cm-note-ts">'+by+esc(n.ts)+'</div><div>'+esc(n.text)+'</div></div>';}}).join('');}}
 function paintTouch(id){{var card=document.querySelector('.kcard[data-id="'+CSS.escape(id)+'"]');if(!card)return;var el=card.querySelector('.kc-touch');if(!el)return;var t=noteData(id).touch;if(t){{el.textContent='🕓 last touch '+t;el.style.display='';}}else{{el.style.display='none';}}}}
 function paintAllTouches(){{document.querySelectorAll('.kcard').forEach(function(c){{paintTouch(c.dataset.id);}});}}
+// ---- shared backend sync (no-op unless syncEnabled) ----
+function mergeLogs(a,b){{var seen={{}},out=[];(a||[]).concat(b||[]).forEach(function(n){{var k=n.ts+'|'+n.text;if(!seen[k]){{seen[k]=1;out.push(n);}}}});out.sort(function(x,y){{return x.ts<y.ts?-1:(x.ts>y.ts?1:0);}});return out;}}
+function postNote(id,n){{return fetch(SYNC_URL+'/activity/'+encodeURIComponent(id),{{method:'POST',headers:{{'Authorization':'Bearer '+SYNC_TOKEN,'Content-Type':'application/json'}},body:JSON.stringify(n)}});}}
+async function syncPull(){{if(!syncEnabled)return;try{{var r=await fetch(SYNC_URL+'/activity',{{headers:{{'Authorization':'Bearer '+SYNC_TOKEN}}}});if(!r.ok)return;var server=await r.json();var local=nst();var ids={{}};Object.keys(server).forEach(function(k){{ids[k]=1;}});Object.keys(local).forEach(function(k){{ids[k]=1;}});var pushes=[];Object.keys(ids).forEach(function(id){{var s=server[id]||{{log:[]}},l=local[id]||{{log:[]}};var merged=mergeLogs(s.log,l.log);var touch=merged.length?merged[merged.length-1].ts.slice(0,10):'';local[id]={{touch:touch,log:merged}};var sset={{}};(s.log||[]).forEach(function(n){{sset[n.ts+'|'+n.text]=1;}});(l.log||[]).forEach(function(n){{if(!sset[n.ts+'|'+n.text])pushes.push({{id:id,n:n}});}});}});nsave(local);paintAllTouches();pushes.forEach(function(p){{postNote(p.id,p.n).catch(function(){{}});}});}}catch(e){{}}}}
 document.querySelectorAll('.addc').forEach(b=>b.addEventListener('click',e=>{{e.stopPropagation();openContact(b.dataset.id);}}));
 modal.querySelector('.cx').addEventListener('click',closeContact);
 modal.querySelector('.cback').addEventListener('click',closeContact);
@@ -603,6 +634,7 @@ var lb=document.getElementById('legendBtn');
 if(lb)lb.addEventListener('click',function(){{cbody.innerHTML=document.getElementById('legendTpl').innerHTML;modal.hidden=false;}});
 place();
 paintAllTouches();
+if(syncEnabled){{syncPull();setInterval(syncPull,45000);}}
 </script></body></html>"""
 
 OUT.write_text(DOC)

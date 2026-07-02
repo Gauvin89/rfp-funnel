@@ -1,0 +1,17 @@
+name = "perigon-rfp-board"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+# Origins allowed to call the API (the encrypted board's GitHub Pages URL).
+[vars]
+ALLOWED_ORIGIN = "https://gauvin89.github.io"
+
+# KV namespace holding the shared per-card activity log.
+# `id` is filled in by deploy.sh after `wrangler kv namespace create ACTIVITY`.
+[[kv_namespaces]]
+binding = "ACTIVITY"
+id = "REPLACE_WITH_KV_ID"
+
+# API_TOKEN is NOT stored here — it is a Worker secret:
+#   echo "<token>" | npx wrangler secret put API_TOKEN
