@@ -1,0 +1,95 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  ONE-TIME bootstrap (run by a Perigon AWS admin). Creates the GitHub OIDC
+  identity provider and a deploy role that GitHub Actions assumes — so no AWS
+  keys are ever stored. Output RoleArn -> GitHub secret AWS_DEPLOY_ROLE_ARN.
+
+  Deploy:  aws cloudformation deploy --template-file infra/bootstrap.yaml \
+             --stack-name rfp-board-bootstrap --capabilities CAPABILITY_NAMED_IAM
+  Get ARN: aws cloudformation describe-stacks --stack-name rfp-board-bootstrap \
+             --query "Stacks[0].Outputs[?OutputKey=='RoleArn'].OutputValue" --output text
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: Gauvin89
+  GitHubRepo:
+    Type: String
+    Default: rfp-funnel
+  CreateOIDCProvider:
+    Type: String
+    AllowedValues: ["yes", "no"]
+    Default: "yes"
+    Description: >
+      "no" if this AWS account already has a GitHub Actions OIDC provider
+      (token.actions.githubusercontent.com) — the role trusts it either way.
+
+Conditions:
+  MakeProvider: !Equals [!Ref CreateOIDCProvider, "yes"]
+
+Resources:
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: MakeProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fce
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: rfp-board-github-deploy
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              # Only this repo's workflows may assume the role.
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+      Policies:
+        # Broad enough for `sam deploy` (CloudFormation creates Lambda/DynamoDB/roles).
+        # Scoped to this app's stack + resource name prefixes. A security team can
+        # tighten further, but this keeps the blast radius to rfp-board-* resources.
+        - PolicyName: rfp-board-deploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: Cfn
+                Effect: Allow
+                Action: [cloudformation:*]
+                Resource: !Sub arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/rfp-board-backend/*
+              - Sid: CfnRead
+                Effect: Allow
+                Action:
+                  [cloudformation:Describe*, cloudformation:List*, cloudformation:GetTemplateSummary, cloudformation:ValidateTemplate]
+                Resource: "*"
+              - Sid: SamArtifacts
+                Effect: Allow
+                Action: [s3:CreateBucket, s3:PutObject, s3:GetObject, s3:GetBucketLocation, s3:ListBucket, s3:PutBucketPolicy, s3:PutBucketTagging, s3:PutEncryptionConfiguration, s3:PutBucketVersioning, s3:PutLifecycleConfiguration]
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::aws-sam-cli-managed-*
+                  - !Sub arn:${AWS::Partition}:s3:::aws-sam-cli-managed-*/*
+              - Sid: AppResources
+                Effect: Allow
+                Action: [lambda:*, dynamodb:*, logs:*]
+                Resource: "*"
+              - Sid: AppRoles
+                Effect: Allow
+                Action: [iam:CreateRole, iam:DeleteRole, iam:GetRole, iam:PassRole, iam:AttachRolePolicy, iam:DetachRolePolicy, iam:PutRolePolicy, iam:DeleteRolePolicy, iam:GetRolePolicy, iam:TagRole, iam:UntagRole, iam:ListRolePolicies, iam:ListAttachedRolePolicies]
+                Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/rfp-board-backend-*
+
+Outputs:
+  RoleArn:
+    Description: Set this as the GitHub secret AWS_DEPLOY_ROLE_ARN.
+    Value: !GetAtt DeployRole.Arn

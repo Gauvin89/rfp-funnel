@@ -34,9 +34,9 @@ def _env_val(key):
     return os.environ.get(key, "")
 
 
-# Shared-notes backend (Cloudflare Worker). Empty until deployed → board runs
+# Shared-notes backend (AWS Lambda + DynamoDB). Empty until deployed → board runs
 # local-only (localStorage). Baked into the (encrypted) board, never committed.
-SYNC_URL = _env_val("WORKER_URL")
+SYNC_URL = _env_val("API_URL") or _env_val("WORKER_URL")
 SYNC_TOKEN = _env_val("BOARD_API_TOKEN")
 
 

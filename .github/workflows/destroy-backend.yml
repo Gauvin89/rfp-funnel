@@ -1,0 +1,37 @@
+name: Destroy backend (pull the plug)
+
+# Manual only. Deletes the AWS stack (Lambda + DynamoDB + data). Your code in
+# GitHub is untouched — redeploy anytime by re-running "Deploy backend".
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DELETE to confirm tearing down the AWS backend'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  STACK: rfp-board-backend
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+
+jobs:
+  destroy:
+    if: ${{ github.event.inputs.confirm == 'DELETE' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Delete stack
+        run: |
+          aws cloudformation delete-stack --stack-name "$STACK" --region "$AWS_REGION"
+          echo "Waiting for teardown…"
+          aws cloudformation wait stack-delete-complete --stack-name "$STACK" --region "$AWS_REGION"
+          echo "🔌 $STACK deleted — the backend is gone. The board falls back to per-browser notes."

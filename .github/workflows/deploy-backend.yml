@@ -1,0 +1,66 @@
+name: Deploy backend (AWS SAM)
+
+# Deploys the Lambda + DynamoDB backend into Perigon's AWS via GitHub OIDC.
+# No AWS keys are stored — the role is assumed with a short-lived OIDC token.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/deploy-backend.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+
+env:
+  STACK: rfp-board-backend
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ALLOWED_ORIGIN: https://gauvin89.github.io
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set up SAM
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: SAM build
+        run: sam build --template infra/template.yaml
+
+      - name: SAM deploy
+        run: |
+          sam deploy \
+            --stack-name "$STACK" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --region "$AWS_REGION" \
+            --parameter-overrides ApiToken="${{ secrets.BOARD_API_TOKEN }}" AllowedOrigin="$ALLOWED_ORIGIN"
+
+      - name: Show API URL
+        run: |
+          URL=$(aws cloudformation describe-stacks --stack-name "$STACK" --region "$AWS_REGION" \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)
+          echo "API_URL=$URL"
+          {
+            echo "### ✅ Board API deployed"
+            echo ""
+            echo "\`\`\`"
+            echo "API_URL=$URL"
+            echo "\`\`\`"
+            echo "Put that in \`config/.env\` as \`API_URL\`, rebuild + re-encrypt, push."
+          } >> "$GITHUB_STEP_SUMMARY"

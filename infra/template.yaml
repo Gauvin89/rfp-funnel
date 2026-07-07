@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Perigon RFP Board — shared activity backend. Lambda (Function URL) + DynamoDB.
+  Same API as the frontend expects: GET /activity, POST /activity/{cardId}, GET /health.
+  Deployed from GitHub Actions; tear down = delete this stack ("pull the plug").
+
+Parameters:
+  ApiToken:
+    Type: String
+    NoEcho: true
+    Description: Bearer token the board must send (kept as a GitHub secret, never in the repo).
+  AllowedOrigin:
+    Type: String
+    Default: https://gauvin89.github.io
+    Description: CORS origin allowed to call the API (the encrypted board's URL).
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+    MemorySize: 128
+
+Resources:
+  ActivityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: rfp-board-activity
+      BillingMode: PAY_PER_REQUEST          # pennies; scales to zero
+      SSESpecification:
+        SSEEnabled: true                    # encrypted at rest
+      AttributeDefinitions:
+        - AttributeName: cardId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: cardId
+          KeyType: HASH
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: rfp-board-api
+      Handler: handler.lambda_handler
+      CodeUri: app/
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref ActivityTable
+          API_TOKEN: !Ref ApiToken
+          ALLOWED_ORIGIN: !Ref AllowedOrigin
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ActivityTable
+      FunctionUrlConfig:
+        AuthType: NONE                      # public endpoint; auth is the bearer token in code
+        Cors:
+          AllowOrigins:
+            - !Ref AllowedOrigin
+          AllowMethods:
+            - GET
+            - POST
+          AllowHeaders:
+            - authorization
+            - content-type
+          MaxAge: 86400
+
+Outputs:
+  ApiUrl:
+    Description: Base URL of the board API (set this as API_URL in config/.env).
+    Value: !GetAtt ApiFunctionUrl.FunctionUrl
+  TableName:
+    Value: !Ref ActivityTable

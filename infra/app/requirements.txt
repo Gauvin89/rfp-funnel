@@ -1,0 +1,1 @@
+# boto3 is provided by the AWS Lambda python3.12 runtime — no extra deps needed.
