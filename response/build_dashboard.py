@@ -38,6 +38,7 @@ def _env_val(key):
 # local-only (localStorage). Baked into the (encrypted) board, never committed.
 SYNC_URL = _env_val("API_URL") or _env_val("WORKER_URL")
 SYNC_TOKEN = _env_val("BOARD_API_TOKEN")
+CALENDLY = _env_val("CALENDLY_URL") or "https://calendly.com/perigon-intake"
 
 
 def load(path, default):
@@ -278,8 +279,9 @@ for c in cards:
 
 # ---------- render ----------
 
-KIND_LABEL = {"rfp": "RFP", "lead": "FDA APPROVAL", "pipeline": "PIPELINE", "dose": "DOSE · TRIAL",
-              "manuf": "LEAD LIST"}
+KIND_LABEL = {"rfp": "RFP", "lead": "FDA approval", "pipeline": "Clinical Trials", "dose": "DOSE trial",
+              "manuf": "Lead List"}
+KIND_DOT = {"rfp": "🔵", "lead": "🟢", "manuf": "🟠", "pipeline": "🟣", "dose": "🔴"}
 VERDICT_CLS = {"Strong fit": "ok", "Possible": "warn", "Likely out of scope": "bad"}
 
 
@@ -313,35 +315,49 @@ def card_html(c):
         fl = "".join(f"<li class='bd2'>⚠ {e(x)}</li>" for x in a.get("flags", []))
         fit_block = f'<details class="fitd"><summary>📑 Read the solicitation PDF — fit analysis</summary><ul class="fitlist">{rs}{fl}</ul></details>'
     blockers = "; ".join(c["blockers"])
+    to_email = ""
+    ct = c.get("contact") or {}
+    if ct.get("emails"):
+        to_email = ct["emails"][0]
+    if not to_email:
+        for l in c["links"]:
+            if str(l.get("url", "")).startswith("mailto:"):
+                to_email = l["url"][7:]
+                break
     pitch_block = ""
     p = c.get("pitch")
+    pdf = (p or {}).get("pdf", "")
     if p:
         safeid = "".join(ch for ch in c["id"] if ch.isalnum())
-        pdf = p.get("pdf", "")
-        pdf_link = f'<a class="dl" href="file://{e(pdf)}" target="_blank">📄 {e(p.get("drug", c["title"]))} pitch PDF</a>' if pdf else ""
+        outreach = p.get("outreach", "")
+        if CALENDLY:
+            outreach = outreach.rstrip() + f"\n\nBook 20 minutes: {CALENDLY}"
+        pdf_link = f'<a class="dl" href="file://{e(pdf)}" target="_blank">📄 pitch PDF</a>' if pdf else ""
+        gmail_btn = f'<button class="gmailb" data-to="{e(to_email)}" data-t="o{safeid}" title="Open a Gmail draft with this message">✉ Open in Gmail</button>'
+        cal_btn = f'<a class="dl" href="{e(CALENDLY)}" target="_blank">📅 Calendly</a>' if CALENDLY else ""
         pitch_block = ('<details class="pitchd"><summary>✉ Outreach draft + pitch PDF</summary>'
-                       f'<textarea class="outbox" id="o{safeid}" readonly>{e(p.get("outreach", ""))}</textarea>'
-                       f'<div class="prow"><button class="copyb" data-t="o{safeid}">⧉ Copy message</button>{pdf_link}</div>'
+                       f'<textarea class="outbox" id="o{safeid}" readonly>{e(outreach)}</textarea>'
+                       f'<div class="prow"><button class="copyb" data-t="o{safeid}">⧉ Copy</button>{gmail_btn}{cal_btn}{pdf_link}</div>'
+                       '<div class="muted" style="margin-top:5px">Gmail opens pre-filled — attach the PDF manually (a compose link can’t auto-attach files).</div>'
                        '</details>')
     steps = "".join(f"<li>{s}</li>" for s in c["steps"])
     links = "".join(f'<a class="dl" href="{e(l["url"])}" target="_blank">{l["label"]}</a>' for l in c["links"]) \
         or '<span class="muted">contact via notice</span>'
     body = f'<details class="bd"><summary>RFP details</summary><div class="body">{e(c["body"])}</div></details>' if c["body"] else ""
     ddl = e(str(c["deadline"])[:10]) if c["deadline"] else ""
-    # standalone pitch-PDF button (separate from the outreach draft section)
-    pdfbtn = ""
-    if p and p.get("pdf"):
-        pdfbtn = f'<a class="pdfbtn" href="file://{e(p["pdf"])}" target="_blank" title="Open the branded pitch PDF">📄 Pitch PDF</a>'
-    return f"""<div class="kcard" draggable="true" data-id="{e(c['id'])}" data-kind="{c['kind']}" data-score="{e(c['score'])}" data-deadline="{ddl}" data-text="{e((c['title']+' '+c['org']+' '+' '.join(c['drugs'])).lower())}">
+    sortdate = e(str(c["deadline"] or c["award_date"] or "")[:10])
+    org_line = f'<div class="kc-org">{e(c["org"])}</div>' if c["org"] and c["org"] != c["title"] else ""
+    return f"""<div class="kcard" draggable="true" data-id="{e(c['id'])}" data-kind="{c['kind']}" data-score="{e(c['score'])}" data-date="{sortdate}" data-deadline="{ddl}" data-text="{e((c['title']+' '+c['org']+' '+' '.join(c['drugs'])).lower())}">
       <div class="kc-load"></div>
-      <div class="kc-top"><span class="tag t-{c['kind']}">{KIND_LABEL[c['kind']]} · {e(c['source'])}</span><span class="kc-topr"><button class="expand" title="Expand / collapse">▾</button><button class="addc" data-id="{e(c['id'])}" title="Contact &amp; details">+</button><span class="kc-score" title="Best-fit score">{e(c['score'])}</span></span></div>
-      <div class="kc-headline"><span class="kc-emoji">{c['emoji']}</span><h4>{e(c['title'])}</h4></div>
-      <div class="kc-org">{e(c['org'])}</div>
-      <div class="kc-badges"><span class="vbadge2">{c['vemoji']} {e(c['vlabel'])}</span>{f'<span class="vbadge2">{vbadge}</span>' if vbadge else ''}{pdfbtn}</div>
-      <div class="kc-touch"></div>
+      <div class="kc-top"><span class="tag t-{c['kind']}" title="{KIND_LABEL[c['kind']]}">{KIND_DOT.get(c['kind'], '⚪')}</span><span class="kc-topr"><button class="expand" title="Expand / collapse">▾</button><button class="fu" data-id="{e(c['id'])}" title="Set follow-up">📞</button><button class="pdfbtn2" data-id="{e(c['id'])}" data-pdf="{e(pdf)}" title="Custom pitch PDF">📄</button><button class="addc" data-id="{e(c['id'])}" title="Contact &amp; details">+</button><span class="kc-score" title="Best-fit score">{e(c['score'])}</span></span></div>
+      <div class="kc-headline"><span class="kc-emoji">{c['emoji']}</span><h4>{e(c['title'])}</h4><span class="vbadge2 inline">{c['vemoji']} {e(c['vlabel'])}</span></div>
+      {org_line}
+      <div class="kc-followup"></div>
       <div class="kc-summary">{e(c['summary'])}</div>
       <div class="kc-more">
+        {f'<div class="vrow">{vbadge}</div>' if vbadge else ''}
         {due_line}
+        <div class="kc-touch"></div>
         <div class="chips">{''.join(chips)}</div>
         <div class="kc-fit">🎯 {e(c['fit'])}</div>
         <div class="kc-est">⏱ {e(c['est'])}</div>
@@ -507,20 +523,21 @@ a{{color:var(--acc)}}
 .vbadge2{{font-size:10.5px;background:var(--inset);border:1px solid var(--line);border-radius:5px;padding:2px 7px;color:var(--mut)}}
 .pdfbtn{{font-size:10.5px;background:rgba(240,140,60,.16);border:1px solid var(--line);border-radius:5px;padding:2px 8px;color:#f0913c;text-decoration:none;font-weight:600}}
 .pdfbtn:hover{{border-color:#f0913c}}
-.kc-summary{{font-size:11.5px;color:var(--mut);line-height:1.4;margin:5px 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}}
+.kc-summary{{font-size:11.5px;color:var(--mut);line-height:1.4;margin:5px 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}}
 .kcard.open .kc-summary{{-webkit-line-clamp:none;overflow:visible}}
 .expand{{background:var(--inset);border:1px solid var(--line);color:var(--mut);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:12px;line-height:1;padding:0;transition:transform .15s}}
 .expand:hover{{border-color:var(--acc);color:var(--acc)}}
 .kcard.open .expand{{transform:rotate(180deg)}}
 .kc-more{{display:none;margin-top:6px;border-top:1px solid var(--line);padding-top:8px}}
 .kcard.open .kc-more{{display:block}}
-.kcard.enriching{{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}}
+.kcard.enriching{{border-color:var(--acc);animation:pulseb 1.4s ease-in-out infinite}}
+@keyframes pulseb{{0%,100%{{box-shadow:0 0 0 1px var(--acc)}}50%{{box-shadow:0 0 0 3px var(--acc)}}}}
 .kc-load{{display:none;height:3px;background:linear-gradient(90deg,transparent,var(--acc),transparent);background-size:200% 100%;animation:load 1.1s linear infinite;margin:-11px -11px 7px;border-radius:10px 10px 0 0}}
 .kcard.enriching .kc-load{{display:block}}
 @keyframes load{{0%{{background-position:200% 0}}100%{{background-position:-200% 0}}}}
 .sortsel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--txt);font-size:12.5px;cursor:pointer}}
 .collapseAll{{background:transparent;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px}}
-.addlead{{margin-left:auto;background:var(--acc);border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12.5px;font-weight:700}}
+.addlead{{background:var(--acc);border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12.5px;font-weight:700}}
 .addlead:hover{{filter:brightness(1.08)}}
 .al-row2{{display:flex;gap:8px}}.al-row2>div{{flex:1}}.al-row2 input{{flex:1;min-width:0}}
 .al-contact{{position:relative;border:1px solid var(--line);border-radius:8px;padding:9px;margin-bottom:8px;background:var(--inset)}}
@@ -529,29 +546,60 @@ a{{color:var(--acc)}}
 .addc-row:hover{{border-color:var(--acc)}}
 .cm-note-hint{{font-size:11.5px;color:var(--mut);background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:12px 0}}
 .vbadge2.enrich{{background:rgba(77,139,240,.16);color:var(--acc);border-color:var(--acc)}}
+/* header layout — actions on the title row (no wasted row) */
+.hrow{{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap}}
+.hactions{{display:flex;gap:8px;align-items:center;flex-wrap:wrap}}
+.htitle h1{{margin:0 0 3px}}
+/* kind dot tag + inline vertical badge */
+.tag{{background:none!important;border:none;padding:0;font-size:12px;line-height:1}}
+.kc-headline{{flex-wrap:wrap}}
+.vbadge2.inline{{margin-left:auto}}
+/* colored filter pills (light shade of each color) */
+.pill.t-rfp{{background:rgba(77,139,240,.13)}}
+.pill.t-lead{{background:rgba(47,191,113,.13)}}
+.pill.t-manuf{{background:rgba(240,140,60,.13)}}
+.pill.t-pipeline{{background:rgba(176,125,240,.13)}}
+.pill.t-dose{{background:rgba(239,91,107,.13)}}
+/* follow-up chip + rotting tile color */
+.kc-followup{{display:none;font-size:11.5px;font-weight:700;margin:3px 0 2px}}
+.kc-followup.fu-overdue{{color:var(--bad)}}.kc-followup.fu-soon{{color:var(--warn)}}.kc-followup.fu-ok{{color:var(--ok)}}
+.kcard.fu-overdue{{border-left:3px solid var(--bad)}}
+.kcard.fu-soon{{border-left:3px solid var(--warn)}}
+.kcard.fu-ok{{border-left:3px solid var(--ok)}}
+/* small icon buttons (phone / pdf) */
+.fu,.pdfbtn2{{background:var(--inset);border:1px solid var(--line);color:var(--mut);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:12px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center}}
+.fu:hover,.pdfbtn2:hover{{border-color:var(--acc)}}
+.gmailb{{background:var(--acc);border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11.5px;font-weight:600}}
 </style></head><body>
 <header>
-  <h1>Perigon RFP Board <button class="legend" id="legendBtn" title="Legend — what am I looking at?">&#9432;</button></h1>
-  <div class="sub">Discover → qualify → submit · {len(cards)} opportunities · generated {updated}{(' · ' + sam_note) if sam_note else ''}</div>
+  <div class="hrow">
+    <div class="htitle">
+      <h1>Perigon RFP Board <button class="legend" id="legendBtn" title="Legend — what am I looking at?">&#9432;</button></h1>
+      <div class="sub">Discover → qualify → submit · {len(cards)} opportunities · generated {updated}{(' · ' + sam_note) if sam_note else ''}</div>
+    </div>
+    <div class="hactions">
+      <button class="addlead" title="Add a new lead">＋ Add Lead</button>
+      <button class="export" title="Download board decisions (incl. out-of-scope) as JSON">⬇ Export</button>
+      <button class="theme" title="Toggle light/dark">🌙 Dark</button>
+      <button class="reset">Reset board</button>
+    </div>
+  </div>
   <div class="toolbar">
-    <span class="stat"><b>{n_rfp}</b> RFPs · <b>{n_lead}</b> FDA · <b>{n_manuf}</b> leads · <b>{n_pipe}</b> pipeline · <b>{n_dose}</b> DOSE · <b>{readiness}%</b> docs ready</span>
-    <span class="pill on" data-f="all">All</span>
-    <span class="pill" data-f="rfp">RFPs</span>
-    <span class="pill" data-f="lead">FDA approvals</span>
-    <span class="pill" data-f="manuf">Lead List</span>
-    <span class="pill" data-f="pipeline">Pipeline</span>
-    <span class="pill" data-f="dose">DOSE (trials)</span>
+    <span class="stat"><b>{n_rfp}</b> RFPs · <b>{n_lead}</b> FDA · <b>{n_manuf}</b> leads · <b>{n_pipe}</b> trials · <b>{n_dose}</b> DOSE · <b>{readiness}%</b> docs ready</span>
+    <span class="pill on t-all" data-f="all">⚫ All</span>
+    <span class="pill t-rfp" data-f="rfp">🔵 RFPs</span>
+    <span class="pill t-lead" data-f="lead">🟢 FDA approvals</span>
+    <span class="pill t-manuf" data-f="manuf">🟠 Lead List</span>
+    <span class="pill t-pipeline" data-f="pipeline">🟣 Clinical Trials</span>
+    <span class="pill t-dose" data-f="dose">🔴 DOSE</span>
     <input class="search" placeholder="search drug / manufacturer / program…">
     <select class="sortsel" title="Sort tiles within each column">
       <option value="score">Sort: Best fit</option>
+      <option value="followup">Sort: Follow-up date</option>
+      <option value="date">Sort: Upcoming date</option>
       <option value="fresh">Sort: Freshest touch</option>
-      <option value="stale">Sort: Stalest touch</option>
     </select>
     <button class="collapseAll" title="Collapse or expand all tiles">⤢ Expand all</button>
-    <button class="addlead" title="Add a new lead">＋ Add Lead</button>
-    <button class="export" title="Download board decisions (incl. out-of-scope) as JSON">⬇ Export</button>
-    <button class="theme" title="Toggle light/dark">🌙 Dark</button>
-    <button class="reset">Reset board</button>
   </div>
 </header>
 <div class="board">{col_html}</div>
@@ -596,6 +644,13 @@ a{{color:var(--acc)}}
     <div class="al-row2"><input class="al-phone cm-who" placeholder="Phone (leave blank to enrich)"><input class="al-linkedin cm-who" placeholder="LinkedIn URL (optional)"></div>
   </div>
 </template>
+<div id="fumodal" class="cmodal" hidden><div class="cback" data-close="fu"></div><div class="cbox">
+  <button class="cx" data-close="fu" title="Close">✕</button>
+  <div class="cm-kind">📞 Follow-up</div><h3 id="fu-title">Set follow-up</h3>
+  <div class="cm-sec"><div class="cm-lbl">Follow-up date</div><input type="date" id="fu-date" class="cm-who"></div>
+  <div class="cm-note-hint">Sets a 📞 MM/DD (±days) chip on the tile, color-codes it as it ages (rots), and logs the follow-up to the activity log. Sort by <b>Follow-up date</b> to work your day.</div>
+  <div class="prow"><button class="copyb" id="fu-save">Set follow-up</button><button class="collapseAll" id="fu-clear">Clear</button></div>
+</div></div>
 <div class="foot">
   <h2>What we don't have yet — {len(gaps)} gaps blocking submission</h2>
   <ul class="gaps">{gaps_html}</ul>
@@ -667,9 +722,10 @@ function sortCards(mode){{
     var arr=Array.prototype.slice.call(body.querySelectorAll('.kcard'));
     arr.sort((a,b)=>{{
       if(mode==='score')return (+b.dataset.score||0)-(+a.dataset.score||0);
+      if(mode==='followup'){{var fa=(noteData(a.dataset.id).followUp)||'9999-99',fb=(noteData(b.dataset.id).followUp)||'9999-99';return fa<fb?-1:(fa>fb?1:0);}}
+      if(mode==='date'){{var da=a.dataset.date||'9999-99',db=b.dataset.date||'9999-99';return da<db?-1:(da>db?1:0);}}
       var ta=(noteData(a.dataset.id).touch)||'',tb=(noteData(b.dataset.id).touch)||'';
-      if(mode==='fresh')return tb<ta?-1:(tb>ta?1:0);
-      return ta<tb?-1:(ta>tb?1:0);
+      return tb<ta?-1:(tb>ta?1:0);
     }});
     arr.forEach(c=>body.appendChild(c));
   }});
@@ -757,6 +813,39 @@ function addNote(id,text,who){{text=(text||'').trim();if(!text)return;who=(who||
 function renderThread(log){{if(!log||!log.length)return '<div class="cm-empty">No notes yet — add your first touch above.</div>';return log.slice().reverse().map(function(n){{var by=n.by?('<span class="cm-by">'+esc(n.by)+'</span> · '):'';return '<div class="cm-note"><div class="cm-note-ts">'+by+esc(n.ts)+'</div><div>'+esc(n.text)+'</div></div>';}}).join('');}}
 function paintTouch(id){{var card=document.querySelector('.kcard[data-id="'+CSS.escape(id)+'"]');if(!card)return;var el=card.querySelector('.kc-touch');if(!el)return;var t=noteData(id).touch;if(t){{el.textContent='🕓 last touch '+t;el.style.display='';}}else{{el.style.display='none';}}}}
 function paintAllTouches(){{document.querySelectorAll('.kcard').forEach(function(c){{paintTouch(c.dataset.id);}});}}
+// ---- follow-up dates (rotting) + pdf + gmail ----
+function daysUntil(d){{var t=new Date(d+'T00:00:00');var n=new Date();n.setHours(0,0,0,0);return Math.round((t-n)/86400000);}}
+function fmtMMDD(d){{var p=d.split('-');return p[1]+'/'+p[2];}}
+function paintFollowUp(id){{
+  var card=document.querySelector('.kcard[data-id="'+CSS.escape(id)+'"]');if(!card)return;
+  var el=card.querySelector('.kc-followup');var fu=(noteData(id).followUp)||'';
+  card.classList.remove('fu-overdue','fu-soon','fu-ok');
+  if(!fu){{if(el){{el.textContent='';el.style.display='none';}}return;}}
+  var d=daysUntil(fu);var cls=d<0?'fu-overdue':(d<=3?'fu-soon':'fu-ok');card.classList.add(cls);
+  if(el){{el.className='kc-followup '+cls;el.style.display='';el.textContent='📞 '+fmtMMDD(fu)+' ('+(d>=0?'+':'')+d+')';}}
+}}
+function paintAllFollowUps(){{document.querySelectorAll('.kcard').forEach(function(c){{paintFollowUp(c.dataset.id);}});}}
+function saveFollowUp(id,date){{
+  var o=nst();var en=o[id]||{{touch:'',log:[]}};en.followUp=date;
+  var note={{ts:nowStamp(),text:'📞 Follow-up set for '+fmtMMDD(date)+'/'+date.slice(0,4),by:localStorage.getItem(WHO_KEY)||''}};
+  en.log.push(note);en.touch=note.ts.slice(0,10);o[id]=en;nsave(o);
+  paintFollowUp(id);paintTouch(id);
+  if(syncEnabled)postNote(id,note).catch(function(){{}});
+}}
+function clearFollowUp(id){{var o=nst();if(o[id]){{o[id].followUp='';nsave(o);}}paintFollowUp(id);}}
+var fuModal=document.getElementById('fumodal');var fuTarget=null;
+function openFollowUp(id){{fuTarget=id;var fu=noteData(id).followUp||'';var inp=document.getElementById('fu-date');
+  if(fu){{inp.value=fu;}}else{{var d=new Date();d.setDate(d.getDate()+7);inp.value=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}}
+  document.getElementById('fu-title').textContent='Follow-up · '+((CONTACTS[id]&&CONTACTS[id].title)||id);
+  fuModal.hidden=false;}}
+document.getElementById('fu-save').addEventListener('click',function(){{if(fuTarget&&document.getElementById('fu-date').value){{saveFollowUp(fuTarget,document.getElementById('fu-date').value);}}fuModal.hidden=true;}});
+document.getElementById('fu-clear').addEventListener('click',function(){{if(fuTarget)clearFollowUp(fuTarget);fuModal.hidden=true;}});
+document.addEventListener('click',function(e){{
+  if(e.target.dataset&&e.target.dataset.close==='fu')fuModal.hidden=true;
+  var f=e.target.closest&&e.target.closest('.fu');if(f){{e.stopPropagation();openFollowUp(f.dataset.id);}}
+  var pb=e.target.closest&&e.target.closest('.pdfbtn2');if(pb){{e.stopPropagation();if(pb.dataset.pdf){{window.open('file://'+pb.dataset.pdf,'_blank');}}else{{alert('The custom pitch PDF for this lead has not been generated yet.\\nPDFs render in the nightly build (or when Chrome/Brave are closed).');}}}}
+  var gb=e.target.closest&&e.target.closest('.gmailb');if(gb){{e.stopPropagation();var ta=document.getElementById(gb.dataset.t);var txt=ta?ta.value:'';var subj='';var body=txt;var m=txt.match(/^Subject:\\s*(.*)\\n/);if(m){{subj=m[1];body=txt.slice(m[0].length);}}window.open('https://mail.google.com/mail/?view=cm&fs=1&tf=1&to='+encodeURIComponent(gb.dataset.to||'')+'&su='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body),'_blank');}}
+}});
 // ---- shared backend sync (no-op unless syncEnabled) ----
 function mergeLogs(a,b){{var seen={{}},out=[];(a||[]).concat(b||[]).forEach(function(n){{var k=n.ts+'|'+n.text;if(!seen[k]){{seen[k]=1;out.push(n);}}}});out.sort(function(x,y){{return x.ts<y.ts?-1:(x.ts>y.ts?1:0);}});return out;}}
 function postNote(id,n){{return fetch(SYNC_URL+'/activity/'+encodeURIComponent(id),{{method:'POST',headers:{{'Authorization':'Bearer '+SYNC_TOKEN,'Content-Type':'application/json'}},body:JSON.stringify(n)}});}}
@@ -804,14 +893,14 @@ function nlCard(l){{
   d.className='kcard enriching';d.setAttribute('draggable','true');
   d.dataset.id=l.id;d.dataset.kind='manuf';d.dataset.score=l.score||50;d.dataset.deadline='';
   d.dataset.text=((l.company||'')+' '+(l.drug||'')+' '+(l.program||'')).toLowerCase();
+  var sub=[l.drug,l.program].filter(Boolean).join(' · ');
   d.innerHTML='<div class="kc-load"></div>'
-    +'<div class="kc-top"><span class="tag t-manuf">NEW LEAD · manual</span><span class="kc-topr"><button class="expand" title="Expand">▾</button><button class="addc" data-id="'+esc(l.id)+'">+</button><span class="kc-score">'+esc(l.score||'—')+'</span></span></div>'
-    +'<div class="kc-headline"><span class="kc-emoji">'+nlEmoji(l.drug)+'</span><h4>'+esc(l.company||'New lead')+'</h4></div>'
-    +'<div class="kc-org">'+esc([l.drug,l.program].filter(Boolean).join(' · '))+'</div>'
-    +'<div class="kc-badges"><span class="vbadge2">🧪 New lead</span><span class="vbadge2 enrich">⏳ enriching…</span></div>'
-    +'<div class="kc-touch"></div>'
-    +'<div class="kc-summary">New lead added manually. Queued to auto-enrich contact info + LinkedIn and generate a custom pitch PDF once the enrichment backend is live.</div>'
-    +'<div class="kc-more"><button class="oos" data-id="'+esc(l.id)+'">✕ Out of scope</button></div>';
+    +'<div class="kc-top"><span class="tag t-manuf" title="New lead">🟠</span><span class="kc-topr"><button class="expand" title="Expand">▾</button><button class="fu" data-id="'+esc(l.id)+'" title="Set follow-up">📞</button><button class="pdfbtn2" data-id="'+esc(l.id)+'" data-pdf="" title="Custom pitch PDF">📄</button><button class="addc" data-id="'+esc(l.id)+'">+</button><span class="kc-score">'+esc(l.score||'—')+'</span></span></div>'
+    +'<div class="kc-headline"><span class="kc-emoji">'+nlEmoji(l.drug)+'</span><h4>'+esc(l.company||'New lead')+'</h4><span class="vbadge2 inline enrich">⏳ enriching…</span></div>'
+    +(sub?'<div class="kc-org">'+esc(sub)+'</div>':'')
+    +'<div class="kc-followup"></div>'
+    +'<div class="kc-summary">New lead — queued to auto-enrich contact info + LinkedIn and generate a custom pitch PDF once enrichment is live.</div>'
+    +'<div class="kc-more"><div class="kc-touch"></div><button class="oos" data-id="'+esc(l.id)+'">✕ Out of scope</button></div>';
   return {{el:d,col:col}};
 }}
 function renderNewLeads(){{
@@ -847,6 +936,7 @@ document.getElementById('al-save').addEventListener('click',function(){{
 place();
 paintAllTouches();
 renderNewLeads();
+paintAllFollowUps();
 if(syncEnabled){{syncPull();setInterval(syncPull,45000);}}
 </script></body></html>"""
 
