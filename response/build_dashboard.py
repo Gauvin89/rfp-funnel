@@ -223,7 +223,7 @@ def make_card(r, kind):
         "steps": steps, "links": [l for l in links if l.get("url")], "body": body,
         "naics": r.get("naics", ""), "notice": r.get("notice", ""), "pin": r.get("extra", {}).get("pin", ""),
         "analysis": fit_analysis, "pitch": pitches.get(cid),
-        "contact": contact, "products": products,
+        "contact": contact, "products": products, "people": r.get("people", []),
     }
 
 
@@ -395,7 +395,7 @@ contacts_map = {c["id"]: {
     "title": c["title"], "org": c["org"], "kind": c["kind"], "kindLabel": KIND_LABEL[c["kind"]],
     "source": c["source"], "products": c.get("products", ""), "drugs": c.get("drugs", []),
     "contact": c.get("contact", {}) or {}, "fit": c["fit"], "score": c["score"],
-    "links": c["links"],
+    "links": c["links"], "people": c.get("people", []), "vlabel": c.get("vlabel", ""),
 } for c in cards}
 contacts_json = json.dumps(contacts_map, ensure_ascii=False).replace("</", "<\\/")
 sync_url_js = json.dumps(SYNC_URL)

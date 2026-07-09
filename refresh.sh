@@ -20,6 +20,8 @@ echo "==> State/local (NYC, Michigan)"
 python3 discovery/state_monitor.py || echo "   (state failed)"
 echo "==> Lead List (manufacturer BD contacts — local/gitignored)"
 python3 discovery/leads_import.py || echo "   (leads import failed)"
+echo "==> Enrich contacts via Apollo (cached — new contacts only; needs paid plan)"
+python3 discovery/enrich_contacts.py || echo "   (enrichment skipped — Apollo plan/credits)"
 echo "==> Asset inventory"
 python3 response/scan_assets.py
 echo "==> Per-drug pitches (outreach + branded PDF)"
