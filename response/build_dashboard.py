@@ -226,6 +226,43 @@ def make_card(r, kind):
     }
 
 
+def med_emoji(c):
+    t = (c["title"] + " " + " ".join(c.get("drugs", [])) + " " + c.get("products", "") + " " + c["fit"]).lower()
+    if any(w in t for w in ("inject", "subcut", "intraven", "infus", "autoinject", "syringe", "vial", " iv ")):
+        return "💉"
+    if any(w in t for w in ("capsule", "tablet", "oral", "pill")):
+        return "💊"
+    return {"dose": "🧬", "rfp": "📋", "pipeline": "🧬"}.get(c["kind"], "💊")
+
+
+def vertical(c):
+    t = (c["org"] + " " + c.get("products", "") + " " + c["fit"] + " "
+         + str((c.get("contact") or {}).get("notes", ""))).lower()
+    if c["kind"] == "rfp":
+        return ("🏛️", "Gov RFP")
+    if "pbm" in t or "insur" in t or "payer" in t:
+        return ("🏦", "PBM / Insurer")
+    if any(w in t for w in ("device", "instrument", "monitor", " pump", "chair", "system for")):
+        return ("🩺", "Device")
+    if "hub" in t:
+        return ("🏥", "HUB")
+    if c["kind"] == "dose":
+        return ("🧬", "Trial")
+    return ("🧪", "Pharma")
+
+
+def summarize(c):
+    lead = {"rfp": "Government/agency solicitation.",
+            "lead": "Newly FDA-approved therapy — early LDD/hub target.",
+            "pipeline": "Phase-3 therapy nearing launch.",
+            "dose": "Oral trial that needs pharmacy support.",
+            "manuf": "Manufacturer business-development relationship."}.get(c["kind"], "")
+    prod = ", ".join(c.get("drugs", [])[:3]) or (c.get("products", "")[:60])
+    s = f"{lead} {c['org'] or 'Org TBD'}" + (f" — {prod}." if prod else ".")
+    s += f" How we'd work together: {c['fit']}"
+    return s[:280]
+
+
 cards = ([make_card(r, "rfp") for r in recs["sam"]] +
          [make_card(r, "rfp") for r in recs["state"]] +
          [make_card(r, "lead") for r in recs["fda"]] +
@@ -233,6 +270,10 @@ cards = ([make_card(r, "rfp") for r in recs["sam"]] +
          [make_card(r, "pipeline") for r in recs["pipeline"]] +
          [make_card(r, "dose") for r in recs["dose"]])
 cards.sort(key=lambda c: c["score"], reverse=True)
+for c in cards:
+    c["emoji"] = med_emoji(c)
+    c["vemoji"], c["vlabel"] = vertical(c)
+    c["summary"] = summarize(c)
 
 
 # ---------- render ----------
@@ -287,27 +328,35 @@ def card_html(c):
         or '<span class="muted">contact via notice</span>'
     body = f'<details class="bd"><summary>RFP details</summary><div class="body">{e(c["body"])}</div></details>' if c["body"] else ""
     ddl = e(str(c["deadline"])[:10]) if c["deadline"] else ""
-    return f"""<div class="kcard" draggable="true" data-id="{e(c['id'])}" data-kind="{c['kind']}" data-deadline="{ddl}" data-text="{e((c['title']+' '+c['org']+' '+' '.join(c['drugs'])).lower())}">
-      <div class="kc-top"><span class="tag t-{c['kind']}">{KIND_LABEL[c['kind']]} · {e(c['source'])}</span><span class="kc-topr"><button class="addc" data-id="{e(c['id'])}" title="Contact &amp; details">+</button><span class="kc-score">{e(c['score'])}</span></span></div>
-      <h4>{e(c['title'])}</h4>
+    # standalone pitch-PDF button (separate from the outreach draft section)
+    pdfbtn = ""
+    if p and p.get("pdf"):
+        pdfbtn = f'<a class="pdfbtn" href="file://{e(p["pdf"])}" target="_blank" title="Open the branded pitch PDF">📄 Pitch PDF</a>'
+    return f"""<div class="kcard" draggable="true" data-id="{e(c['id'])}" data-kind="{c['kind']}" data-score="{e(c['score'])}" data-deadline="{ddl}" data-text="{e((c['title']+' '+c['org']+' '+' '.join(c['drugs'])).lower())}">
+      <div class="kc-load"></div>
+      <div class="kc-top"><span class="tag t-{c['kind']}">{KIND_LABEL[c['kind']]} · {e(c['source'])}</span><span class="kc-topr"><button class="expand" title="Expand / collapse">▾</button><button class="addc" data-id="{e(c['id'])}" title="Contact &amp; details">+</button><span class="kc-score" title="Best-fit score">{e(c['score'])}</span></span></div>
+      <div class="kc-headline"><span class="kc-emoji">{c['emoji']}</span><h4>{e(c['title'])}</h4></div>
       <div class="kc-org">{e(c['org'])}</div>
+      <div class="kc-badges"><span class="vbadge2">{c['vemoji']} {e(c['vlabel'])}</span>{f'<span class="vbadge2">{vbadge}</span>' if vbadge else ''}{pdfbtn}</div>
       <div class="kc-touch"></div>
-      {f'<div class="vrow">{vbadge}</div>' if vbadge else ''}
-      {due_line}
-      <div class="chips">{''.join(chips)}</div>
-      <div class="kc-fit">🎯 {e(c['fit'])}</div>
-      <div class="kc-est">⏱ {e(c['est'])}</div>
-      {f'<div class="kc-block">⛔ {e(blockers)}</div>' if c['blockers'] else ''}
-      {fit_block}
-      {pitch_block}
-      <details class="steps"><summary>Top 3 steps</summary><ol>{steps}</ol></details>
-      {body}
-      <div class="kc-links">{links}</div>
-      <button class="oos" data-id="{e(c['id'])}" title="Mark as not a fit for our business">✕ Out of scope</button>
+      <div class="kc-summary">{e(c['summary'])}</div>
+      <div class="kc-more">
+        {due_line}
+        <div class="chips">{''.join(chips)}</div>
+        <div class="kc-fit">🎯 {e(c['fit'])}</div>
+        <div class="kc-est">⏱ {e(c['est'])}</div>
+        {f'<div class="kc-block">⛔ {e(blockers)}</div>' if c['blockers'] else ''}
+        {fit_block}
+        {pitch_block}
+        <details class="steps"><summary>Top 3 steps</summary><ol>{steps}</ol></details>
+        {body}
+        <div class="kc-links">{links}</div>
+        <button class="oos" data-id="{e(c['id'])}" title="Mark as not a fit for our business">✕ Out of scope</button>
+      </div>
     </div>"""
 
 
-COLS = [("new", "New"), ("reviewing", "Reviewing"), ("preparing", "Preparing"),
+COLS = [("new", "New Lead"), ("reviewing", "In Progress"), ("preparing", "Preparing"),
         ("submitted", "Submitted"), ("closed", "Closed"),
         ("pastdue", "Past Deadline"), ("outofscope", "Out of Scope")]
 cards_html = "\n".join(card_html(c) for c in cards)
@@ -448,6 +497,28 @@ a{{color:var(--acc)}}
 .cm-by{{color:var(--acc);font-weight:600}}
 .cm-sync{{font-size:11px;color:var(--ok)}}.cm-sync.off{{color:var(--mut)}}
 .lg{{margin:5px 0;font-size:12.5px;display:flex;align-items:center;gap:7px}}.lg .tag{{flex:0 0 auto}}
+/* condensed / expandable tiles */
+.kcard{{position:relative;overflow:hidden}}
+.kc-headline{{display:flex;align-items:center;gap:7px;margin:6px 0 2px}}
+.kc-emoji{{font-size:16px;line-height:1;flex:0 0 auto}}
+.kcard h4{{margin:0;font-size:14px;line-height:1.25}}
+.kc-badges{{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:5px 0}}
+.vbadge2{{font-size:10.5px;background:var(--inset);border:1px solid var(--line);border-radius:5px;padding:2px 7px;color:var(--mut)}}
+.pdfbtn{{font-size:10.5px;background:rgba(240,140,60,.16);border:1px solid var(--line);border-radius:5px;padding:2px 8px;color:#f0913c;text-decoration:none;font-weight:600}}
+.pdfbtn:hover{{border-color:#f0913c}}
+.kc-summary{{font-size:11.5px;color:var(--mut);line-height:1.4;margin:5px 0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}}
+.kcard.open .kc-summary{{-webkit-line-clamp:none;overflow:visible}}
+.expand{{background:var(--inset);border:1px solid var(--line);color:var(--mut);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:12px;line-height:1;padding:0;transition:transform .15s}}
+.expand:hover{{border-color:var(--acc);color:var(--acc)}}
+.kcard.open .expand{{transform:rotate(180deg)}}
+.kc-more{{display:none;margin-top:6px;border-top:1px solid var(--line);padding-top:8px}}
+.kcard.open .kc-more{{display:block}}
+.kcard.enriching{{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc)}}
+.kc-load{{display:none;height:3px;background:linear-gradient(90deg,transparent,var(--acc),transparent);background-size:200% 100%;animation:load 1.1s linear infinite;margin:-11px -11px 7px;border-radius:10px 10px 0 0}}
+.kcard.enriching .kc-load{{display:block}}
+@keyframes load{{0%{{background-position:200% 0}}100%{{background-position:-200% 0}}}}
+.sortsel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--txt);font-size:12.5px;cursor:pointer}}
+.collapseAll{{background:transparent;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px}}
 </style></head><body>
 <header>
   <h1>Perigon RFP Board <button class="legend" id="legendBtn" title="Legend — what am I looking at?">&#9432;</button></h1>
@@ -461,6 +532,12 @@ a{{color:var(--acc)}}
     <span class="pill" data-f="pipeline">Pipeline</span>
     <span class="pill" data-f="dose">DOSE (trials)</span>
     <input class="search" placeholder="search drug / manufacturer / program…">
+    <select class="sortsel" title="Sort tiles within each column">
+      <option value="score">Sort: Best fit</option>
+      <option value="fresh">Sort: Freshest touch</option>
+      <option value="stale">Sort: Stalest touch</option>
+    </select>
+    <button class="collapseAll" title="Collapse or expand all tiles">⤢ Expand all</button>
     <button class="export" title="Download board decisions (incl. out-of-scope) as JSON">⬇ Export</button>
     <button class="theme" title="Toggle light/dark">🌙 Dark</button>
     <button class="reset">Reset board</button>
@@ -505,7 +582,7 @@ const KEY='rfpBoardV2';
 const cols=['new','reviewing','preparing','submitted','closed','pastdue','outofscope'];
 function st(){{try{{return JSON.parse(localStorage.getItem(KEY)||'{{}}')}}catch(e){{return {{}}}}}}
 function save(s){{localStorage.setItem(KEY,JSON.stringify(s))}}
-function counts(){{cols.forEach(c=>{{document.getElementById('cc-'+c).textContent=document.querySelectorAll('#col-'+c+' .kcard').length}})}}
+function counts(){{cols.forEach(c=>{{var v=0;document.querySelectorAll('#col-'+c+' .kcard').forEach(k=>{{if(k.style.display!=='none')v++;}});document.getElementById('cc-'+c).textContent=v;}})}}
 function defCol(card){{
   const d=card.dataset.deadline;
   if(d){{const today=new Date().toISOString().slice(0,10); if(d<today) return 'pastdue';}}
@@ -546,7 +623,32 @@ function applyFilter(){{
     const okQ=!curQ||c.dataset.text.includes(curQ);
     c.style.display=(okF&&okQ)?'':'none';
   }});
+  counts();
 }}
+// expand / collapse a tile
+document.addEventListener('click',e=>{{var b=e.target.closest('.expand');if(!b)return;e.stopPropagation();var card=b.closest('.kcard');if(card)card.classList.toggle('open');}});
+// sort tiles within each column
+function sortCards(mode){{
+  cols.forEach(col=>{{
+    var body=document.querySelector('#col-'+col+' .col-body');if(!body)return;
+    var arr=Array.prototype.slice.call(body.querySelectorAll('.kcard'));
+    arr.sort((a,b)=>{{
+      if(mode==='score')return (+b.dataset.score||0)-(+a.dataset.score||0);
+      var ta=(noteData(a.dataset.id).touch)||'',tb=(noteData(b.dataset.id).touch)||'';
+      if(mode==='fresh')return tb<ta?-1:(tb>ta?1:0);
+      return ta<tb?-1:(ta>tb?1:0);
+    }});
+    arr.forEach(c=>body.appendChild(c));
+  }});
+}}
+document.querySelector('.sortsel').addEventListener('change',e=>sortCards(e.target.value));
+// collapse / expand all
+var allOpen=false;
+document.querySelector('.collapseAll').addEventListener('click',function(){{
+  allOpen=!allOpen;
+  document.querySelectorAll('.kcard').forEach(c=>c.classList.toggle('open',allOpen));
+  this.textContent=allOpen?'▴ Collapse all':'⤢ Expand all';
+}});
 document.querySelectorAll('.pill').forEach(p=>p.addEventListener('click',()=>{{
   document.querySelectorAll('.pill').forEach(x=>x.classList.remove('on'));p.classList.add('on');curF=p.dataset.f;applyFilter();
 }}));
