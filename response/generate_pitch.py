@@ -31,6 +31,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "discovery"))
 import common as C  # noqa: E402
 
 LABEL = "https://api.fda.gov/drug/label.json"
+SIGNATURE = """Thank You,
+
+Nicole Yakich
+Sr. Relationship Manager
+Phone: 724-513-3489
+Address: 1120 Stevenson Mill Road, Suite 200, Pittsburgh PA 15108
+
+Perigon Pharmacy Three Sixty — Digital Pharmacy, Personal Care · URAC + ACHC Accredited Specialty Pharmacy
+
+CONFIDENTIALITY NOTICE: This e-mail and any files transmitted with it are confidential and are intended \
+solely for the use of the individual or entity to which they are addressed. If you are not the intended \
+recipient of this email and the information it contains or if you are not the employee or agent responsible \
+for delivering this email and the information it contains to the intended recipient, be advised that you \
+have received this email in error and that any use, dissemination, forwarding, printing or copying of this \
+email is strictly prohibited. If you have received this email in error, please notify the sender of this \
+message by email and destroy all copies of the original message."""
 PITCH_DIR = C.ROOT / "pitches"
 INDEX = C.OPP_DIR / "pitches_index.json"
 ASSETS = C.ROOT / "assets"
@@ -210,8 +226,7 @@ real-world adherence and outcomes reported back to your team.
 
 I've attached a short, {drug}-branded mockup of the patient experience on Medesto. Worth 20 minutes?
 
-Best,
-[Your name] · Perigon Specialty Pharmacy
+{SIGNATURE}
 """
 
 
@@ -236,8 +251,7 @@ real-world reporting delivered under this contract.
 
 I've attached a brief overview of the patient experience we'd stand up. We welcome the full discussion.
 
-Respectfully,
-[Your name] · Perigon Specialty Pharmacy
+{SIGNATURE}
 """
 
 
@@ -262,8 +276,7 @@ platform, branded to {drug}:
 We report real-world adherence and outcomes back to your team. I've attached a short, {drug}-branded
 mockup of the patient experience — worth 20 minutes to explore the fit?
 
-Best,
-[Your name] · Perigon Specialty Pharmacy
+{SIGNATURE}
 """
 
 

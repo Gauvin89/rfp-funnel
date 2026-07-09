@@ -334,7 +334,7 @@ def card_html(c):
             outreach = outreach.rstrip() + f"\n\nBook 20 minutes: {CALENDLY}"
         pdf_link = f'<a class="dl" href="file://{e(pdf)}" target="_blank">📄 pitch PDF</a>' if pdf else ""
         gmail_btn = f'<button class="gmailb" data-to="{e(to_email)}" data-t="o{safeid}" title="Open a Gmail draft with this message">✉ Open in Gmail</button>'
-        cal_btn = f'<a class="dl" href="{e(CALENDLY)}" target="_blank">📅 Calendly</a>' if CALENDLY else ""
+        cal_btn = f'<a class="callink" href="{e(CALENDLY)}" target="_blank">📅 Book 20 minutes ↗</a>' if CALENDLY else ""
         pitch_block = ('<details class="pitchd"><summary>✉ Outreach draft + pitch PDF</summary>'
                        f'<textarea class="outbox" id="o{safeid}" readonly>{e(outreach)}</textarea>'
                        f'<div class="prow"><button class="copyb" data-t="o{safeid}">⧉ Copy</button>{gmail_btn}{cal_btn}{pdf_link}</div>'
@@ -345,13 +345,17 @@ def card_html(c):
         or '<span class="muted">contact via notice</span>'
     body = f'<details class="bd"><summary>RFP details</summary><div class="body">{e(c["body"])}</div></details>' if c["body"] else ""
     ddl = e(str(c["deadline"])[:10]) if c["deadline"] else ""
-    sortdate = e(str(c["deadline"] or c["award_date"] or "")[:10])
+    sortdate = str(c["deadline"] or c["award_date"] or "")[:10]
+    date_lbl = {"rfp": "Due", "lead": "Approved", "dose": "Trial", "pipeline": "Launch"}.get(c["kind"], "")
+    date_chip = f'<div class="kc-date">📅 {date_lbl} {e(sortdate)}</div>' if sortdate else ""
     org_line = f'<div class="kc-org">{e(c["org"])}</div>' if c["org"] and c["org"] != c["title"] else ""
-    return f"""<div class="kcard" draggable="true" data-id="{e(c['id'])}" data-kind="{c['kind']}" data-score="{e(c['score'])}" data-date="{sortdate}" data-deadline="{ddl}" data-text="{e((c['title']+' '+c['org']+' '+' '.join(c['drugs'])).lower())}">
+    return f"""<div class="kcard" draggable="true" data-id="{e(c['id'])}" data-kind="{c['kind']}" data-score="{e(c['score'])}" data-date="{e(sortdate)}" data-deadline="{ddl}" data-text="{e((c['title']+' '+c['org']+' '+' '.join(c['drugs'])).lower())}">
       <div class="kc-load"></div>
-      <div class="kc-top"><span class="tag t-{c['kind']}" title="{KIND_LABEL[c['kind']]}">{KIND_DOT.get(c['kind'], '⚪')}</span><span class="kc-topr"><button class="expand" title="Expand / collapse">▾</button><button class="fu" data-id="{e(c['id'])}" title="Set follow-up">📞</button><button class="pdfbtn2" data-id="{e(c['id'])}" data-pdf="{e(pdf)}" title="Custom pitch PDF">📄</button><button class="addc" data-id="{e(c['id'])}" title="Contact &amp; details">+</button><span class="kc-score" title="Best-fit score">{e(c['score'])}</span></span></div>
+      <span class="kc-corner t-{c['kind']}" title="{KIND_LABEL[c['kind']]}"></span>
+      <div class="kc-top"><span class="kc-topr"><button class="expand" title="Expand / collapse">▾</button><button class="fu" data-id="{e(c['id'])}" title="Set follow-up">📞</button><button class="pdfbtn2" data-id="{e(c['id'])}" data-pdf="{e(pdf)}" title="Custom pitch PDF">📄</button><button class="addc" data-id="{e(c['id'])}" title="Contact &amp; details">+</button><span class="kc-score" title="Best-fit score">{e(c['score'])}</span></span></div>
       <div class="kc-headline"><span class="kc-emoji">{c['emoji']}</span><h4>{e(c['title'])}</h4><span class="vbadge2 inline">{c['vemoji']} {e(c['vlabel'])}</span></div>
       {org_line}
+      {date_chip}
       <div class="kc-followup"></div>
       <div class="kc-summary">{e(c['summary'])}</div>
       <div class="kc-more">
@@ -483,7 +487,7 @@ a{{color:var(--acc)}}
 .ans{{display:flex;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:12.5px}}.ans-k{{min-width:160px;color:var(--mut)}}
 .conf{{color:var(--warn);font-size:12px;margin:5px 0}}
 .t-manuf{{background:rgba(240,140,60,.16);color:#f0913c}}
-.kc-topr{{display:flex;align-items:center;gap:8px}}
+.kc-topr{{display:flex;align-items:center;gap:8px;margin-left:auto}}
 .addc{{background:var(--inset);border:1px solid var(--line);color:var(--acc);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}}
 .addc:hover{{border-color:var(--acc);background:var(--panel)}}
 .cmodal{{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center}}
@@ -570,6 +574,22 @@ a{{color:var(--acc)}}
 .fu,.pdfbtn2{{background:var(--inset);border:1px solid var(--line);color:var(--mut);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:12px;line-height:1;padding:0;display:inline-flex;align-items:center;justify-content:center}}
 .fu:hover,.pdfbtn2:hover{{border-color:var(--acc)}}
 .gmailb{{background:var(--acc);border:none;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11.5px;font-weight:600}}
+/* higher-contrast tile buttons (dark mode was too dim) */
+.kc-topr .expand,.kc-topr .fu,.kc-topr .pdfbtn2,.kc-topr .addc{{color:var(--txt);border:1px solid var(--mut);background:var(--panel)}}
+.kc-topr button:hover{{border-color:var(--acc);color:var(--acc)}}
+/* corner kind tab (color-coded, folded-corner look) */
+.kc-corner{{position:absolute;right:0;bottom:0;width:0;height:0;border-left:15px solid transparent;border-bottom:15px solid var(--line)}}
+.kc-corner.t-rfp{{border-bottom-color:#4d8bf0}}
+.kc-corner.t-lead{{border-bottom-color:#2fbf71}}
+.kc-corner.t-manuf{{border-bottom-color:#f0913c}}
+.kc-corner.t-pipeline{{border-bottom-color:#b07df0}}
+.kc-corner.t-dose{{border-bottom-color:#ef5b6b}}
+/* intrinsic date chip on the condensed tile */
+.kc-date{{font-size:11px;color:var(--mut);font-weight:600;margin:2px 0}}
+.callink{{color:var(--acc);font-weight:600;font-size:11.5px;text-decoration:underline}}
+.fu-note{{width:100%;height:70px;background:var(--inset);border:1px solid var(--line);border-radius:8px;color:var(--txt);padding:8px;font-size:12.5px;resize:vertical;margin-bottom:6px;font-family:inherit}}
+.cm-person{{align-items:flex-start}}
+.cm-actions{{display:flex;gap:6px;flex-shrink:0;white-space:nowrap}}
 </style></head><body>
 <header>
   <div class="hrow">
@@ -647,8 +667,11 @@ a{{color:var(--acc)}}
 <div id="fumodal" class="cmodal" hidden><div class="cback" data-close="fu"></div><div class="cbox">
   <button class="cx" data-close="fu" title="Close">✕</button>
   <div class="cm-kind">📞 Follow-up</div><h3 id="fu-title">Set follow-up</h3>
-  <div class="cm-sec"><div class="cm-lbl">Follow-up date</div><input type="date" id="fu-date" class="cm-who"></div>
-  <div class="cm-note-hint">Sets a 📞 MM/DD (±days) chip on the tile, color-codes it as it ages (rots), and logs the follow-up to the activity log. Sort by <b>Follow-up date</b> to work your day.</div>
+  <div class="cm-sec"><div class="cm-lbl">Follow-up date</div><input type="date" id="fu-date" class="cm-who" onclick="this.showPicker&&this.showPicker()"></div>
+  <div class="cm-sec"><div class="cm-lbl">Note (added to the activity log)</div>
+    <textarea id="fu-note" class="fu-note" placeholder="e.g. Left VM — resend Ibsrela one-pager, revisit after ASX…"></textarea>
+    <input id="fu-who" class="cm-who" placeholder="Your name / initials"></div>
+  <div class="cm-note-hint">Sets a 📞 MM/DD (±days) chip on the tile, color-codes it as it ages (rots), and logs the date + your note to the activity log. Sort by <b>Follow-up date</b> to work your day.</div>
   <div class="prow"><button class="copyb" id="fu-save">Set follow-up</button><button class="collapseAll" id="fu-clear">Clear</button></div>
 </div></div>
 <div class="foot">
@@ -753,11 +776,29 @@ document.querySelectorAll('.copyb').forEach(b=>b.addEventListener('click',e=>{{
   else{{t.select();document.execCommand('copy');done()}}
 }}));
 // export the team's decisions (columns incl. out-of-scope) so we can learn/refine filters
+function csvCell(v){{v=(v==null?'':String(v));return /[",\\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}}
+const COL_LABEL={{new:'New Lead',reviewing:'In Progress',preparing:'Preparing',submitted:'Submitted',closed:'Closed',pastdue:'Past Deadline',outofscope:'Out of Scope'}};
 document.querySelector('.export').addEventListener('click',()=>{{
-  const s=st(),rows=[];
-  document.querySelectorAll('.kcard').forEach(c=>{{const id=c.dataset.id;rows.push({{id:id,kind:c.dataset.kind,column:(s[id]&&s[id].col)||defCol(c),deadline:c.dataset.deadline||'',title:(c.querySelector('h4')||{{textContent:''}}).textContent,org:(c.querySelector('.kc-org')||{{textContent:''}}).textContent}})}});
-  const blob=new Blob([JSON.stringify({{exported:new Date().toISOString(),decisions:rows}},null,2)],{{type:'application/json'}});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rfp-board-decisions.json';a.click();
+  const s=st();
+  const head=['Company','Type','Vertical','Stage','Score','Product / drug','Contacts','Emails','Phones','LinkedIn','Perigon lead','Follow-up','Days to follow-up','Last touch','Upcoming date','Fit','Latest note'];
+  const rows=[head];
+  document.querySelectorAll('.kcard').forEach(c=>{{
+    const id=c.dataset.id,cc=CONTACTS[id]||{{}},ct=cc.contact||{{}},nd=noteData(id);
+    const people=cc.people||[];
+    const names=people.length?people.map(p=>((p.first||'')+' '+(p.last||'')).trim()).filter(Boolean):(ct.names||[]);
+    const emails=people.length?people.map(p=>p.email).filter(Boolean):(ct.emails||[]);
+    const phones=people.length?people.map(p=>p.phone).filter(Boolean):((ct.notes||'').match(/[0-9][0-9\\-().\\s]{{7,}}/g)||[]);
+    const lis=(cc.links||[]).filter(l=>/linkedin/.test(l.url||'')).map(l=>l.url);
+    const fu=nd.followUp||'';var dtf=fu?daysUntil(fu):'';
+    const lastNote=(nd.log&&nd.log.length)?nd.log[nd.log.length-1].text:'';
+    rows.push([cc.title||'',cc.kindLabel||c.dataset.kind,(cc.vlabel||''),COL_LABEL[(s[id]&&s[id].col)||defCol(c)]||'',c.dataset.score||'',
+      (cc.products||(cc.drugs||[]).join(', ')),names.join(' | '),emails.join(' | '),phones.join(' | '),lis.join(' | '),
+      (ct.owner||''),fu,dtf,(nd.touch||''),c.dataset.date||'',(cc.fit||''),lastNote].map(csvCell));
+  }});
+  const csv=rows.map(r=>r.join(',')).join('\\n');
+  const blob=new Blob([csv],{{type:'text/csv'}});
+  var d=new Date();var stamp=d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate());
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='perigon-pipeline-'+stamp+'.csv';a.click();
 }});
 // contact / details popup ("+" on each card)
 const CONTACTS={contacts_json};
@@ -771,8 +812,16 @@ function openContact(id){{
   if(c.org&&c.org!==c.title)h+='<div class="kc-org">'+esc(c.org)+'</div>';
   if(c.fit)h+='<div class="cm-sec"><div class="cm-lbl">Fit</div><div>'+esc(c.fit)+'</div></div>';
   if(ct.owner)h+='<div class="cm-sec"><div class="cm-lbl">Perigon lead</div><span class="cm-owner">'+esc(ct.owner)+'</span></div>';
-  const names=ct.names||[], emails=ct.emails||[];
-  if(names.length||emails.length){{
+  const names=ct.names||[], emails=ct.emails||[], people=c.people||[];
+  if(people.length){{
+    h+='<div class="cm-sec"><div class="cm-lbl">Contacts</div>';
+    people.forEach(function(p){{
+      var nm=((p.first||'')+' '+(p.last||'')).trim()||'(contact)';
+      var li=p.linkedin||liLink(nm,c.org);
+      h+='<div class="cm-person"><div><b>'+esc(nm)+'</b>'+(p.email?'<div class="muted">'+esc(p.email)+'</div>':'<div class="muted">email — enriching</div>')+(p.phone?'<div class="muted">'+esc(p.phone)+'</div>':'')+'</div><span class="cm-actions">'+(p.email?'<a href="mailto:'+esc(p.email)+'">✉ Email</a>':'')+'<a href="'+esc(li)+'" target="_blank">LinkedIn ↗</a></span></div>';
+    }});
+    h+='</div>';
+  }} else if(names.length||emails.length){{
     h+='<div class="cm-sec"><div class="cm-lbl">Contact</div>';
     names.forEach(n=>{{h+='<div class="cm-person"><span>'+esc(n)+'</span><a href="'+esc(liLink(n,c.org))+'" target="_blank">LinkedIn ↗</a></div>';}});
     emails.forEach(m=>{{h+='<div class="cm-person"><span>'+esc(m)+'</span><a href="mailto:'+esc(m)+'">✉ Email</a></div>';}});
@@ -782,7 +831,7 @@ function openContact(id){{
   if(chips.length)h+='<div class="cm-sec"><div class="cm-lbl">Products / focus</div><div class="cm-chips">'+chips.map(x=>'<span class="cm-chip">💊 '+esc(x)+'</span>').join('')+'</div></div>';
   if(ct.notes)h+='<div class="cm-sec"><div class="cm-lbl">Notes</div><div class="cm-notes">'+esc(ct.notes)+'</div></div>';
   if(c.links&&c.links.length)h+='<div class="cm-sec"><div class="cm-lbl">Links</div><div class="cm-links">'+c.links.map(l=>'<a class="dl" href="'+esc(l.url)+'" target="_blank">'+esc(l.label)+'</a>').join('')+'</div></div>';
-  if(!names.length&&!emails.length&&!ct.owner&&!(c.links&&c.links.length))h+='<div class="cm-sec"><div class="cm-notes">No stored contact — reach out via the notice/source.</div></div>';
+  if(!people.length&&!names.length&&!emails.length&&!ct.owner&&!(c.links&&c.links.length))h+='<div class="cm-sec"><div class="cm-notes">No stored contact — reach out via the notice/source.</div></div>';
   var nd=noteData(id);
   h+='<div class="cm-sec"><div class="cm-lbl">Activity / touch log</div>';
   h+='<div class="cm-touch">Last touch: <b id="cm-lt">'+(nd.touch||'—')+'</b>'+(syncEnabled?' <span class="cm-sync">· shared</span>':' <span class="cm-sync off">· this browser only</span>')+'</div>';
@@ -825,9 +874,11 @@ function paintFollowUp(id){{
   if(el){{el.className='kc-followup '+cls;el.style.display='';el.textContent='📞 '+fmtMMDD(fu)+' ('+(d>=0?'+':'')+d+')';}}
 }}
 function paintAllFollowUps(){{document.querySelectorAll('.kcard').forEach(function(c){{paintFollowUp(c.dataset.id);}});}}
-function saveFollowUp(id,date){{
+function saveFollowUp(id,date,noteText,who){{
+  who=(who||'').trim();if(who)localStorage.setItem(WHO_KEY,who);
   var o=nst();var en=o[id]||{{touch:'',log:[]}};en.followUp=date;
-  var note={{ts:nowStamp(),text:'📞 Follow-up set for '+fmtMMDD(date)+'/'+date.slice(0,4),by:localStorage.getItem(WHO_KEY)||''}};
+  var txt='📞 Follow-up '+fmtMMDD(date)+'/'+date.slice(0,4)+((noteText||'').trim()?(' — '+noteText.trim()):'');
+  var note={{ts:nowStamp(),text:txt,by:who||localStorage.getItem(WHO_KEY)||''}};
   en.log.push(note);en.touch=note.ts.slice(0,10);o[id]=en;nsave(o);
   paintFollowUp(id);paintTouch(id);
   if(syncEnabled)postNote(id,note).catch(function(){{}});
@@ -836,9 +887,10 @@ function clearFollowUp(id){{var o=nst();if(o[id]){{o[id].followUp='';nsave(o);}}
 var fuModal=document.getElementById('fumodal');var fuTarget=null;
 function openFollowUp(id){{fuTarget=id;var fu=noteData(id).followUp||'';var inp=document.getElementById('fu-date');
   if(fu){{inp.value=fu;}}else{{var d=new Date();d.setDate(d.getDate()+7);inp.value=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}}
+  document.getElementById('fu-note').value='';document.getElementById('fu-who').value=localStorage.getItem(WHO_KEY)||'';
   document.getElementById('fu-title').textContent='Follow-up · '+((CONTACTS[id]&&CONTACTS[id].title)||id);
   fuModal.hidden=false;}}
-document.getElementById('fu-save').addEventListener('click',function(){{if(fuTarget&&document.getElementById('fu-date').value){{saveFollowUp(fuTarget,document.getElementById('fu-date').value);}}fuModal.hidden=true;}});
+document.getElementById('fu-save').addEventListener('click',function(){{if(fuTarget&&document.getElementById('fu-date').value){{saveFollowUp(fuTarget,document.getElementById('fu-date').value,document.getElementById('fu-note').value,document.getElementById('fu-who').value);}}fuModal.hidden=true;}});
 document.getElementById('fu-clear').addEventListener('click',function(){{if(fuTarget)clearFollowUp(fuTarget);fuModal.hidden=true;}});
 document.addEventListener('click',function(e){{
   if(e.target.dataset&&e.target.dataset.close==='fu')fuModal.hidden=true;
@@ -882,8 +934,8 @@ function nlRegister(l){{
   var emails=(l.contacts||[]).map(function(c){{return c.email;}}).filter(Boolean);
   var phones=(l.contacts||[]).map(function(c){{return c.phone;}}).filter(Boolean);
   var links=(l.contacts||[]).map(function(c){{return c.linkedin?{{label:'LinkedIn ↗',url:c.linkedin}}:null;}}).filter(Boolean);
-  CONTACTS[l.id]={{title:l.company,org:[l.drug,l.program].filter(Boolean).join(' · '),kind:'manuf',kindLabel:'NEW LEAD',
-    source:'manual',products:l.drug||'',drugs:l.drug?[l.drug]:[],
+  CONTACTS[l.id]={{title:l.company,org:[l.drug,l.program].filter(Boolean).join(' · '),kind:'manuf',kindLabel:'NEW LEAD',vlabel:'New lead',
+    source:'manual',products:l.drug||'',drugs:l.drug?[l.drug]:[],people:l.contacts||[],
     contact:{{names:names,emails:emails,owner:'',notes:'Manually added '+l.created+(phones.length?(' · phones: '+phones.join(', ')):'')+'\\nStatus: queued for enrichment (contact info + LinkedIn + custom PDF).'}},
     fit:'Manually-added lead — pending auto-enrichment.',score:l.score||'—',links:links}};
 }}
@@ -894,10 +946,13 @@ function nlCard(l){{
   d.dataset.id=l.id;d.dataset.kind='manuf';d.dataset.score=l.score||50;d.dataset.deadline='';
   d.dataset.text=((l.company||'')+' '+(l.drug||'')+' '+(l.program||'')).toLowerCase();
   var sub=[l.drug,l.program].filter(Boolean).join(' · ');
+  d.dataset.date=l.created||'';
   d.innerHTML='<div class="kc-load"></div>'
-    +'<div class="kc-top"><span class="tag t-manuf" title="New lead">🟠</span><span class="kc-topr"><button class="expand" title="Expand">▾</button><button class="fu" data-id="'+esc(l.id)+'" title="Set follow-up">📞</button><button class="pdfbtn2" data-id="'+esc(l.id)+'" data-pdf="" title="Custom pitch PDF">📄</button><button class="addc" data-id="'+esc(l.id)+'">+</button><span class="kc-score">'+esc(l.score||'—')+'</span></span></div>'
+    +'<span class="kc-corner t-manuf" title="New lead"></span>'
+    +'<div class="kc-top"><span class="kc-topr"><button class="expand" title="Expand">▾</button><button class="fu" data-id="'+esc(l.id)+'" title="Set follow-up">📞</button><button class="pdfbtn2" data-id="'+esc(l.id)+'" data-pdf="" title="Custom pitch PDF">📄</button><button class="addc" data-id="'+esc(l.id)+'">+</button><span class="kc-score">'+esc(l.score||'—')+'</span></span></div>'
     +'<div class="kc-headline"><span class="kc-emoji">'+nlEmoji(l.drug)+'</span><h4>'+esc(l.company||'New lead')+'</h4><span class="vbadge2 inline enrich">⏳ enriching…</span></div>'
     +(sub?'<div class="kc-org">'+esc(sub)+'</div>':'')
+    +(l.created?'<div class="kc-date">📅 Added '+esc(l.created)+'</div>':'')
     +'<div class="kc-followup"></div>'
     +'<div class="kc-summary">New lead — queued to auto-enrich contact info + LinkedIn and generate a custom pitch PDF once enrichment is live.</div>'
     +'<div class="kc-more"><div class="kc-touch"></div><button class="oos" data-id="'+esc(l.id)+'">✕ Out of scope</button></div>';
