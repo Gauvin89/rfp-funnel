@@ -380,6 +380,7 @@ contacts_map = {c["id"]: {
 contacts_json = json.dumps(contacts_map, ensure_ascii=False).replace("</", "<\\/")
 sync_url_js = json.dumps(SYNC_URL)
 sync_token_js = json.dumps(SYNC_TOKEN)
+col_options = "".join(f'<option value="{cid}">{e(name)}</option>' for cid, name in COLS)
 readiness = round(100 * req_have / max(len(required), 1))
 gaps_html = "".join(f"<li><b>{e(g['label'])}</b> — {e(g.get('notes') or '')}</li>" for g in gaps)
 
@@ -519,6 +520,15 @@ a{{color:var(--acc)}}
 @keyframes load{{0%{{background-position:200% 0}}100%{{background-position:-200% 0}}}}
 .sortsel{{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;color:var(--txt);font-size:12.5px;cursor:pointer}}
 .collapseAll{{background:transparent;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px}}
+.addlead{{margin-left:auto;background:var(--acc);border:none;color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:12.5px;font-weight:700}}
+.addlead:hover{{filter:brightness(1.08)}}
+.al-row2{{display:flex;gap:8px}}.al-row2>div{{flex:1}}.al-row2 input{{flex:1;min-width:0}}
+.al-contact{{position:relative;border:1px solid var(--line);border-radius:8px;padding:9px;margin-bottom:8px;background:var(--inset)}}
+.al-rm{{position:absolute;top:6px;right:6px;background:transparent;border:none;color:var(--mut);cursor:pointer;font-size:12px}}
+.addc-row{{background:transparent;border:1px dashed var(--line);color:var(--acc);border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px;width:100%}}
+.addc-row:hover{{border-color:var(--acc)}}
+.cm-note-hint{{font-size:11.5px;color:var(--mut);background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:12px 0}}
+.vbadge2.enrich{{background:rgba(77,139,240,.16);color:var(--acc);border-color:var(--acc)}}
 </style></head><body>
 <header>
   <h1>Perigon RFP Board <button class="legend" id="legendBtn" title="Legend — what am I looking at?">&#9432;</button></h1>
@@ -538,6 +548,7 @@ a{{color:var(--acc)}}
       <option value="stale">Sort: Stalest touch</option>
     </select>
     <button class="collapseAll" title="Collapse or expand all tiles">⤢ Expand all</button>
+    <button class="addlead" title="Add a new lead">＋ Add Lead</button>
     <button class="export" title="Download board decisions (incl. out-of-scope) as JSON">⬇ Export</button>
     <button class="theme" title="Toggle light/dark">🌙 Dark</button>
     <button class="reset">Reset board</button>
@@ -562,6 +573,28 @@ a{{color:var(--acc)}}
   <div class="cm-sec"><div class="cm-lbl">Columns</div><div>New → Reviewing → Preparing → Submitted → Closed → Past Deadline → Out of Scope. “✕ Out of scope” quick-files a card.</div></div>
   <div class="cm-sec"><div class="cm-lbl">Filter &amp; search</div><div>Pills filter by type; search matches drug / manufacturer / program. ⬇ Export downloads your column decisions; 🌙 toggles theme.</div></div>
   <div class="cm-sec"><div class="cm-notes">Everything you change — columns, notes, touches, theme — is stored locally in this browser. It is not shared between devices or teammates.</div></div>
+</template>
+<div id="addmodal" class="cmodal" hidden><div class="cback" data-close="add"></div><div class="cbox">
+  <button class="cx" data-close="add" title="Close">✕</button>
+  <div class="cm-kind">New lead</div><h3>Add a lead</h3>
+  <div class="cm-sec"><div class="cm-lbl">Company name *</div><input id="al-company" class="cm-who" placeholder="e.g. Salix Pharmaceuticals"></div>
+  <div class="al-row2">
+    <div><div class="cm-lbl">Drug name</div><input id="al-drug" class="cm-who" placeholder="e.g. Xifaxan"></div>
+    <div><div class="cm-lbl">Program name</div><input id="al-program" class="cm-who" placeholder="e.g. IBS-D program"></div>
+  </div>
+  <div class="cm-sec"><div class="cm-lbl">Add to column</div><select id="al-col" class="sortsel" style="width:100%">{col_options}</select></div>
+  <div class="cm-sec"><div class="cm-lbl">Contacts</div><div id="al-contacts"></div>
+    <button class="addc-row" id="al-addcontact">＋ Add a contact</button></div>
+  <div class="cm-note-hint">On save this lands as a <b>blue “enriching” tile</b> in the chosen column — queued to auto-fill blank emails/phones/LinkedIn and generate a custom pitch PDF once the enrichment backend is live.</div>
+  <div class="prow"><button class="copyb" id="al-save">Save lead</button><button class="collapseAll" data-close="add">Cancel</button></div>
+</div></div>
+<template id="al-contactTpl">
+  <div class="al-contact">
+    <button class="al-rm" title="Remove contact">✕</button>
+    <div class="al-row2"><input class="al-first cm-who" placeholder="First name"><input class="al-last cm-who" placeholder="Last name"></div>
+    <input class="al-email cm-who" placeholder="Email (leave blank to enrich)">
+    <div class="al-row2"><input class="al-phone cm-who" placeholder="Phone (leave blank to enrich)"><input class="al-linkedin cm-who" placeholder="LinkedIn URL (optional)"></div>
+  </div>
 </template>
 <div class="foot">
   <h2>What we don't have yet — {len(gaps)} gaps blocking submission</h2>
@@ -655,7 +688,7 @@ document.querySelectorAll('.pill').forEach(p=>p.addEventListener('click',()=>{{
 document.querySelector('.search').addEventListener('input',e=>{{curQ=e.target.value.toLowerCase().trim();applyFilter()}});
 document.querySelector('.reset').addEventListener('click',()=>{{if(confirm('Reset board to defaults? (clears your saved columns)')){{localStorage.removeItem(KEY);location.reload()}}}});
 // quick "out of scope" button on each card
-document.querySelectorAll('.oos').forEach(b=>b.addEventListener('click',e=>{{e.stopPropagation();moveTo(b.dataset.id,'outofscope')}}));
+document.addEventListener('click',e=>{{var b=e.target.closest('.oos');if(b){{e.stopPropagation();moveTo(b.dataset.id,'outofscope');}}}});
 // copy outreach message to clipboard
 document.querySelectorAll('.copyb').forEach(b=>b.addEventListener('click',e=>{{
   e.stopPropagation();const t=document.getElementById(b.dataset.t);
@@ -728,14 +761,92 @@ function paintAllTouches(){{document.querySelectorAll('.kcard').forEach(function
 function mergeLogs(a,b){{var seen={{}},out=[];(a||[]).concat(b||[]).forEach(function(n){{var k=n.ts+'|'+n.text;if(!seen[k]){{seen[k]=1;out.push(n);}}}});out.sort(function(x,y){{return x.ts<y.ts?-1:(x.ts>y.ts?1:0);}});return out;}}
 function postNote(id,n){{return fetch(SYNC_URL+'/activity/'+encodeURIComponent(id),{{method:'POST',headers:{{'Authorization':'Bearer '+SYNC_TOKEN,'Content-Type':'application/json'}},body:JSON.stringify(n)}});}}
 async function syncPull(){{if(!syncEnabled)return;try{{var r=await fetch(SYNC_URL+'/activity',{{headers:{{'Authorization':'Bearer '+SYNC_TOKEN}}}});if(!r.ok)return;var server=await r.json();var local=nst();var ids={{}};Object.keys(server).forEach(function(k){{ids[k]=1;}});Object.keys(local).forEach(function(k){{ids[k]=1;}});var pushes=[];Object.keys(ids).forEach(function(id){{var s=server[id]||{{log:[]}},l=local[id]||{{log:[]}};var merged=mergeLogs(s.log,l.log);var touch=merged.length?merged[merged.length-1].ts.slice(0,10):'';local[id]={{touch:touch,log:merged}};var sset={{}};(s.log||[]).forEach(function(n){{sset[n.ts+'|'+n.text]=1;}});(l.log||[]).forEach(function(n){{if(!sset[n.ts+'|'+n.text])pushes.push({{id:id,n:n}});}});}});nsave(local);paintAllTouches();pushes.forEach(function(p){{postNote(p.id,p.n).catch(function(){{}});}});}}catch(e){{}}}}
-document.querySelectorAll('.addc').forEach(b=>b.addEventListener('click',e=>{{e.stopPropagation();openContact(b.dataset.id);}}));
+document.addEventListener('click',e=>{{var b=e.target.closest('.addc');if(b){{e.stopPropagation();openContact(b.dataset.id);}}}});
 modal.querySelector('.cx').addEventListener('click',closeContact);
 modal.querySelector('.cback').addEventListener('click',closeContact);
 document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeContact();}});
 var lb=document.getElementById('legendBtn');
 if(lb)lb.addEventListener('click',function(){{cbody.innerHTML=document.getElementById('legendTpl').innerHTML;modal.hidden=false;}});
+// ---- ADD LEAD ----
+const NLKEY='rfpNewLeads';
+function nlst(){{try{{return JSON.parse(localStorage.getItem(NLKEY)||'[]')}}catch(e){{return []}}}}
+function nlsave(a){{localStorage.setItem(NLKEY,JSON.stringify(a))}}
+function nlEmoji(d){{return /inject|syringe|subcut|infus|\\biv\\b/i.test(d||'')?'💉':'💊';}}
+const addModal=document.getElementById('addmodal');
+const alContacts=document.getElementById('al-contacts');
+function alAddContactRow(){{
+  var t=document.getElementById('al-contactTpl').content.cloneNode(true);
+  alContacts.appendChild(t);
+}}
+function openAdd(){{alContacts.innerHTML='';alAddContactRow();
+  ['al-company','al-drug','al-program'].forEach(function(id){{document.getElementById(id).value='';}});
+  addModal.hidden=false;}}
+function closeAdd(){{addModal.hidden=true;}}
+document.querySelector('.addlead').addEventListener('click',openAdd);
+document.getElementById('al-addcontact').addEventListener('click',alAddContactRow);
+document.addEventListener('click',function(e){{
+  if(e.target.dataset&&e.target.dataset.close==='add')closeAdd();
+  var rm=e.target.closest&&e.target.closest('.al-rm');if(rm){{var c=rm.closest('.al-contact');if(c)c.remove();}}
+}});
+function nlRegister(l){{
+  var names=(l.contacts||[]).map(function(c){{return ((c.first||'')+' '+(c.last||'')).trim();}}).filter(Boolean);
+  var emails=(l.contacts||[]).map(function(c){{return c.email;}}).filter(Boolean);
+  var phones=(l.contacts||[]).map(function(c){{return c.phone;}}).filter(Boolean);
+  var links=(l.contacts||[]).map(function(c){{return c.linkedin?{{label:'LinkedIn ↗',url:c.linkedin}}:null;}}).filter(Boolean);
+  CONTACTS[l.id]={{title:l.company,org:[l.drug,l.program].filter(Boolean).join(' · '),kind:'manuf',kindLabel:'NEW LEAD',
+    source:'manual',products:l.drug||'',drugs:l.drug?[l.drug]:[],
+    contact:{{names:names,emails:emails,owner:'',notes:'Manually added '+l.created+(phones.length?(' · phones: '+phones.join(', ')):'')+'\\nStatus: queued for enrichment (contact info + LinkedIn + custom PDF).'}},
+    fit:'Manually-added lead — pending auto-enrichment.',score:l.score||'—',links:links}};
+}}
+function nlCard(l){{
+  var s=st();var col=(s[l.id]&&s[l.id].col)||l.col||'new';
+  var d=document.createElement('div');
+  d.className='kcard enriching';d.setAttribute('draggable','true');
+  d.dataset.id=l.id;d.dataset.kind='manuf';d.dataset.score=l.score||50;d.dataset.deadline='';
+  d.dataset.text=((l.company||'')+' '+(l.drug||'')+' '+(l.program||'')).toLowerCase();
+  d.innerHTML='<div class="kc-load"></div>'
+    +'<div class="kc-top"><span class="tag t-manuf">NEW LEAD · manual</span><span class="kc-topr"><button class="expand" title="Expand">▾</button><button class="addc" data-id="'+esc(l.id)+'">+</button><span class="kc-score">'+esc(l.score||'—')+'</span></span></div>'
+    +'<div class="kc-headline"><span class="kc-emoji">'+nlEmoji(l.drug)+'</span><h4>'+esc(l.company||'New lead')+'</h4></div>'
+    +'<div class="kc-org">'+esc([l.drug,l.program].filter(Boolean).join(' · '))+'</div>'
+    +'<div class="kc-badges"><span class="vbadge2">🧪 New lead</span><span class="vbadge2 enrich">⏳ enriching…</span></div>'
+    +'<div class="kc-touch"></div>'
+    +'<div class="kc-summary">New lead added manually. Queued to auto-enrich contact info + LinkedIn and generate a custom pitch PDF once the enrichment backend is live.</div>'
+    +'<div class="kc-more"><button class="oos" data-id="'+esc(l.id)+'">✕ Out of scope</button></div>';
+  return {{el:d,col:col}};
+}}
+function renderNewLeads(){{
+  nlst().forEach(function(l){{
+    if(document.querySelector('.kcard[data-id="'+CSS.escape(l.id)+'"]'))return;
+    nlRegister(l);var r=nlCard(l);
+    var body=document.querySelector('#col-'+r.col+' .col-body')||document.querySelector('#col-new .col-body');
+    body.insertBefore(r.el,body.firstChild);
+  }});
+  counts();
+}}
+document.getElementById('al-save').addEventListener('click',function(){{
+  var company=document.getElementById('al-company').value.trim();
+  if(!company){{document.getElementById('al-company').focus();return;}}
+  var contacts=[];
+  alContacts.querySelectorAll('.al-contact').forEach(function(c){{
+    var o={{first:c.querySelector('.al-first').value.trim(),last:c.querySelector('.al-last').value.trim(),
+      email:c.querySelector('.al-email').value.trim(),phone:c.querySelector('.al-phone').value.trim(),
+      linkedin:c.querySelector('.al-linkedin').value.trim()}};
+    if(o.first||o.last||o.email||o.phone||o.linkedin)contacts.push(o);
+  }});
+  var d=new Date();var created=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  var l={{id:'new:'+d.getTime().toString(36)+Math.floor(d.getTime()%1000).toString(36),
+    company:company,drug:document.getElementById('al-drug').value.trim(),
+    program:document.getElementById('al-program').value.trim(),
+    col:document.getElementById('al-col').value,contacts:contacts,created:created,score:50,status:'enriching'}};
+  var arr=nlst();arr.push(l);nlsave(arr);
+  nlRegister(l);var r=nlCard(l);
+  var body=document.querySelector('#col-'+r.col+' .col-body');body.insertBefore(r.el,body.firstChild);
+  var s=st();s[l.id]=s[l.id]||{{}};s[l.id].col=r.col;save(s);
+  closeAdd();counts();
+}});
 place();
 paintAllTouches();
+renderNewLeads();
 if(syncEnabled){{syncPull();setInterval(syncPull,45000);}}
 </script></body></html>"""
 
